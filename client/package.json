@@ -1,0 +1,33 @@
+{
+  "name": "@mythwork/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "The Mythwork inner-app client: port handshake, typed request() against the method map, subscribe() against the event map, and thin namespaced helpers (sdk.fs.read, sdk.auth.getUser, ...). Dependency-free except @mythwork/protocol.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.*"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mythwork-ai/mythwork",
+    "directory": "sdk/client"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mythwork/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "@mythwork/protocol",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Spec-first TypeScript definition of the Mythwork host <-> inner-app postMessage protocol: envelope types, handshake constants, the full method map, the event map, and the pure data types they reference. Runtime code is constants only.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./envelope": "./src/envelope.ts",
+    "./handshake": "./src/handshake.ts",
+    "./data": "./src/data.ts",
+    "./methods": "./src/methods.ts",
+    "./events": "./src/events.ts"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.*"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mythwork-ai/mythwork",
+    "directory": "sdk/protocol"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
