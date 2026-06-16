@@ -514,3 +514,123 @@ describe('notification prefs', () => {
     sdk.port.close()
   })
 })
+
+describe('profile.update read-after-write (fidelity)', () => {
+  let sdk: MythworkClient
+
+  beforeEach(async () => {
+    sdk = makeClient()
+    await sdk.auth.signIn()
+  })
+  afterEach(() => {
+    sdk.port.close()
+  })
+
+  it('persists bio/location/link so profile.me reads exactly what was written', async () => {
+    await sdk.profile.update({
+      displayName: 'Ada L',
+      bio: 'hi bio',
+      location: 'NYC',
+      link: 'ada.dev',
+    })
+    const me = await sdk.profile.me()
+    expect(me).toMatchObject({
+      displayName: 'Ada L',
+      bio: 'hi bio',
+      location: 'NYC',
+      link: 'ada.dev',
+    })
+  })
+
+  it('a partial update leaves untouched fields intact', async () => {
+    await sdk.profile.update({ bio: 'first', location: 'SF', link: 'x.dev' })
+    await sdk.profile.update({ bio: 'second' }) // only bio
+    const me = await sdk.profile.me()
+    expect(me).toMatchObject({ bio: 'second', location: 'SF', link: 'x.dev' })
+  })
+})
+
+describe('explore.clearRating (signed-in happy path)', () => {
+  it('clears a previously set rating', async () => {
+    const sdk = makeClient()
+    await sdk.auth.signIn()
+    const projectId = SEED_APPS[0]!.projectId
+    await sdk.explore.rate({ projectId, stars: 4 })
+    const cleared = await sdk.explore.clearRating({ projectId })
+    expect(cleared).toEqual({ ok: true })
+    const ratings = await sdk.explore.myRatings()
+    expect('ratings' in ratings).toBe(true)
+    if ('ratings' in ratings) expect(ratings.ratings[projectId]).toBeUndefined()
+    sdk.port.close()
+  })
+})
+
+describe('kernel.signOut reverts identity', () => {
+  it('getUser returns the anonymous sentinel after signOut', async () => {
+    const sdk = makeClient()
+    await sdk.auth.signIn()
+    await sdk.auth.signOut()
+    const user = await sdk.auth.getUser()
+    expect(user).toEqual({ kind: 'anonymous', userId: 'anonymous' })
+    sdk.port.close()
+  })
+})
+
+describe('explore.addComment — reply shape + unknown parent', () => {
+  let sdk: MythworkClient
+
+  beforeEach(async () => {
+    sdk = makeClient()
+    await sdk.auth.signIn()
+  })
+  afterEach(() => {
+    sdk.port.close()
+  })
+
+  it('a reply resolves to a CommentNode with empty replies', async () => {
+    const projectId = 'app_dev_001'
+    const { items } = await sdk.explore.comments({ projectId })
+    const reply = await sdk.explore.addComment({
+      projectId,
+      body: 'a reply',
+      parentCommentId: items[0]!.id,
+    })
+    expect('replies' in reply).toBe(true)
+    if ('replies' in reply) expect(reply.replies).toEqual([])
+  })
+
+  it('a reply to an unknown parent returns { ok:false, reason:"not_found" }', async () => {
+    const result = await sdk.explore.addComment({
+      projectId: 'app_dev_001',
+      body: 'orphan',
+      parentCommentId: 'no-such-parent',
+    })
+    expect(result).toEqual({ ok: false, reason: 'not_found' })
+  })
+})
+
+describe('profile.setNotificationPrefs merges', () => {
+  it('a partial update preserves untouched keys', async () => {
+    const sdk = makeClient()
+    const before = await sdk.profile.getNotificationPrefs()
+    const updated = await sdk.profile.setNotificationPrefs({ weeklyDigest: !before.weeklyDigest })
+    expect(updated.weeklyDigest).toBe(!before.weeklyDigest)
+    expect(updated.comments).toBe(before.comments)
+    expect(updated.remixes).toBe(before.remixes)
+    sdk.port.close()
+  })
+})
+
+describe('state isolation between dev hosts', () => {
+  it('signing in on one client leaves another anonymous', async () => {
+    const a = makeClient()
+    const b = makeClient()
+    await a.auth.signIn()
+    const ua = await a.auth.getUser()
+    const ub = await b.auth.getUser()
+    expect(ua.kind).toBe('public')
+    expect(ub).toEqual({ kind: 'anonymous', userId: 'anonymous' })
+    a.port.close()
+    b.port.close()
+  })
+})

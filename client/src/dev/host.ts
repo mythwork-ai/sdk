@@ -23,8 +23,13 @@ import type {
   AppSummary,
   CommentNode,
   CommentReply,
+  CommitAuthor,
+  CommitInfo,
   FavoriteEdge,
   NotificationPrefs,
+  ProjectInfo,
+  ProjectRole,
+  RoomDescriptor,
   TagCount,
 } from '@mythwork/protocol'
 import {
@@ -57,6 +62,12 @@ interface DevState {
   comments: Map<string, CommentNode[]>
   notifPrefs: NotificationPrefs
   commentSeq: number
+  /**
+   * The signed-in viewer's editable profile fields. Seeded from the maker on
+   * sign-in, written by profile.update, read by profile.me — so a settings
+   * screen reads exactly what it writes (the profile.me contract in methods.ts).
+   */
+  profileFields: { bio: string; location: string; link: string }
 }
 
 function freshState(): DevState {
@@ -68,6 +79,7 @@ function freshState(): DevState {
     comments: new Map(),
     notifPrefs: { ...DEFAULT_NOTIF_PREFS },
     commentSeq: 1,
+    profileFields: { bio: '', location: '', link: '' },
   }
 }
 
@@ -83,9 +95,82 @@ function ensureCommentList(state: DevState, projectId: string): CommentNode[] {
   return list
 }
 
+// ── shared project store (the dev "backend") ───────────────────────────────────
+//
+// Unlike the per-client explore/profile state above, project data is MODULE-LEVEL
+// and keyed by pid, so two `connect({ dev: true })` clients that open the SAME
+// project share one file tree + commit log and see each other's `fs.changed`
+// pushes — the cross-client behavior an editor app's turn-based multiplayer (e.g.
+// tennis) needs. Live Y.Doc convergence rides the collab relay (see the
+// `devCollabRelayFactory` in @mythwork/sdk/react), keyed on `collab.openRoom`'s
+// shared room id.
+
+interface DevProject {
+  pid: string
+  name: string
+  files: Map<string, Uint8Array>
+  /** Newest-first commit log. */
+  commits: CommitInfo[]
+  /** sha → committed file tree, for `fs.showVersion`. */
+  snapshots: Map<string, Map<string, Uint8Array>>
+  /** First opener becomes leader; later openers are followers. */
+  leader: MessagePort | null
+  /** Host ports that have opened this project — fs.changed push targets. */
+  subscribers: Set<MessagePort>
+}
+
+const projects = new Map<string, DevProject>()
+let pidSeq = 1
+
+/** Clear the shared project store. Tests call this in `beforeEach` for isolation. */
+export function _resetDevHostForTests(): void {
+  projects.clear()
+  pidSeq = 1
+}
+
+function ensureProject(pid: string): DevProject {
+  let p = projects.get(pid)
+  if (!p) {
+    p = {
+      pid,
+      name: pid,
+      files: new Map(),
+      commits: [],
+      snapshots: new Map(),
+      leader: null,
+      subscribers: new Set(),
+    }
+    projects.set(pid, p)
+  }
+  return p
+}
+
+/** Push `fs.changed` to every subscriber of `project` except the originator. */
+function pushFsChanged(
+  project: DevProject,
+  origin: MessagePort,
+  path: string,
+  kind: 'created' | 'updated' | 'deleted',
+): void {
+  const msg: PushMessage = { type: 'fs.changed', pid: project.pid, path, kind }
+  for (const port of project.subscribers) {
+    if (port !== origin) port.postMessage(msg)
+  }
+}
+
+function devSha(project: DevProject): string {
+  return `dev${(project.commits.length + 1).toString().padStart(7, '0')}`
+}
+
 // ── handler table ─────────────────────────────────────────────────────────────
 
-type Handler = (args: Record<string, unknown>, state: DevState) => unknown
+/** Per-request context: the calling client's host-side port, used to register
+ * project subscribers and to exclude a writer from its own fs.changed pushes. */
+interface HandlerCtx {
+  hostPort: MessagePort
+}
+
+type Handler = (args: Record<string, unknown>, state: DevState, ctx: HandlerCtx) => unknown
 
 const handlers: Record<string, Handler> = {
   // ── explore reads ──────────────────────────────────────────────────────────
@@ -249,7 +334,9 @@ const handlers: Record<string, Handler> = {
   // Signed-in but no handle → { ok:false, reason:'no_profile' }
   // Signed-in with handle → full profile shape + isOwner:true
   // The dev signed-in user (kernel.signIn) adopts the first SEED_MAKER's
-  // handle ('devuser'), so the happy path is immediately reachable.
+  // handle ('devuser'), so the happy path is immediately reachable; the
+  // no_profile branch is defensive — it documents the host contract but isn't
+  // reachable in dev, since the dev signIn always adopts a seeded maker.
   'profile.me'(_args, state) {
     if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
     const user = state.user as { kind: string; userId: string; displayName?: string }
@@ -260,9 +347,9 @@ const handlers: Record<string, Handler> = {
       displayName: user.displayName ?? maker.displayName,
       appCount: maker.appCount,
       totalLaunches: maker.totalLaunches,
-      bio: maker.bio ?? '',
-      location: maker.location ?? '',
-      link: maker.link ?? '',
+      bio: state.profileFields.bio,
+      location: state.profileFields.location,
+      link: state.profileFields.link,
       isOwner: true as const,
     }
   },
@@ -311,12 +398,18 @@ const handlers: Record<string, Handler> = {
     if (args['displayName'] !== undefined) {
       user.displayName = args['displayName'] as string
     }
+    // Persist the structured fields so profile.me reads exactly what was
+    // written; only overwrite a field the caller actually provided so a
+    // partial update leaves the others intact.
+    if (args['bio'] !== undefined) state.profileFields.bio = args['bio'] as string
+    if (args['location'] !== undefined) state.profileFields.location = args['location'] as string
+    if (args['link'] !== undefined) state.profileFields.link = args['link'] as string
     return {
       ok: true,
       displayName: user.displayName,
-      bio: args['bio'] ?? '',
-      location: args['location'] ?? '',
-      link: args['link'] ?? '',
+      bio: state.profileFields.bio,
+      location: state.profileFields.location,
+      link: state.profileFields.link,
     }
   },
 
@@ -346,12 +439,165 @@ const handlers: Record<string, Handler> = {
       picture: '',
       profileUrl: `https://myth.work/@${maker.handle}`,
     }
+    // Seed the editable fields from the maker so profile.me shows the seed
+    // profile before any edit, and a later profile.update round-trips.
+    state.profileFields = {
+      bio: maker.bio ?? '',
+      location: maker.location ?? '',
+      link: maker.link ?? '',
+    }
     return state.user
   },
 
   'kernel.signOut'(_args, state) {
     state.user = { kind: 'anonymous', userId: 'anonymous' }
+    state.profileFields = { bio: '', location: '', link: '' }
     return state.user
+  },
+
+  // ── project (shared store) ───────────────────────────────────────────────────
+
+  'project.create'(args, _state, ctx) {
+    const pid = `dev-p${pidSeq++}`
+    const project = ensureProject(pid)
+    project.name = (args['projectName'] as string | undefined) ?? pid
+    project.leader = ctx.hostPort
+    project.subscribers.add(ctx.hostPort)
+    return { pid, role: 'leader' } satisfies ProjectInfo
+  },
+
+  'project.open'(args, _state, ctx) {
+    const pid = args['pid'] as string
+    const project = ensureProject(pid)
+    project.subscribers.add(ctx.hostPort)
+    const role: ProjectRole =
+      project.leader === null || project.leader === ctx.hostPort ? 'leader' : 'follower'
+    if (project.leader === null) project.leader = ctx.hostPort
+    return { pid, role } satisfies ProjectInfo
+  },
+
+  'project.close'(args, _state, ctx) {
+    projects.get(args['pid'] as string)?.subscribers.delete(ctx.hostPort)
+    return { ok: true }
+  },
+
+  'project.list'() {
+    return { pids: [...projects.keys()] }
+  },
+
+  // ── fs (shared store; writes push fs.changed to other clients) ───────────────
+
+  'fs.read'(args) {
+    const project = ensureProject(args['pid'] as string)
+    const path = args['path'] as string
+    const bytes = project.files.get(path)
+    if (!bytes) throw new Error(`fs.read: ${path} not found`)
+    return bytes
+  },
+
+  'fs.write'(args, _state, ctx) {
+    const project = ensureProject(args['pid'] as string)
+    const path = args['path'] as string
+    const existed = project.files.has(path)
+    project.files.set(path, args['bytes'] as Uint8Array)
+    pushFsChanged(project, ctx.hostPort, path, existed ? 'updated' : 'created')
+    return { ok: true }
+  },
+
+  'fs.list'(args) {
+    const project = ensureProject(args['pid'] as string)
+    const prefix = args['prefix'] as string | undefined
+    const paths = [...project.files.keys()]
+    return prefix ? paths.filter(p => p.startsWith(prefix)) : paths
+  },
+
+  'fs.exists'(args) {
+    const project = ensureProject(args['pid'] as string)
+    return { exists: project.files.has(args['path'] as string) }
+  },
+
+  'fs.rename'(args, _state, ctx) {
+    const project = ensureProject(args['pid'] as string)
+    const from = args['from'] as string
+    const to = args['to'] as string
+    const bytes = project.files.get(from)
+    if (bytes) {
+      project.files.delete(from)
+      project.files.set(to, bytes)
+      pushFsChanged(project, ctx.hostPort, from, 'deleted')
+      pushFsChanged(project, ctx.hostPort, to, 'created')
+    }
+    return { ok: true }
+  },
+
+  'fs.delete'(args, _state, ctx) {
+    const project = ensureProject(args['pid'] as string)
+    const path = args['path'] as string
+    if (project.files.delete(path)) pushFsChanged(project, ctx.hostPort, path, 'deleted')
+    return { ok: true }
+  },
+
+  // ── git (wire fs.*; commit snapshots the tree for showVersion) ───────────────
+
+  'fs.commit'(args, _state, ctx) {
+    const project = ensureProject(args['pid'] as string)
+    const author = args['author'] as CommitAuthor | undefined
+    const sha = devSha(project)
+    project.commits.unshift({
+      sha,
+      message: args['message'] as string,
+      timestamp: new Date(0),
+      author: author?.name ?? 'dev',
+      authorEmail: author?.email ?? 'dev@mythwork.local',
+    })
+    project.snapshots.set(sha, new Map(project.files))
+    // HEAD moved — nudge other clients so their git state refreshes (tennis wires
+    // files.subscribe(() => git.refresh()), so fs.changed drives the re-fetch).
+    pushFsChanged(project, ctx.hostPort, '/', 'updated')
+    return { sha }
+  },
+
+  'fs.log'(args) {
+    const project = ensureProject(args['pid'] as string)
+    const depth = args['depth'] as number | undefined
+    return depth ? project.commits.slice(0, depth) : project.commits
+  },
+
+  'fs.head'(args) {
+    const project = ensureProject(args['pid'] as string)
+    return project.commits[0]?.sha ?? null
+  },
+
+  'fs.hasUncommittedChanges'() {
+    return { dirty: false }
+  },
+
+  'fs.showVersion'(args) {
+    const project = ensureProject(args['pid'] as string)
+    const shaLike =
+      (args['shaLike'] as string) === 'HEAD'
+        ? (project.commits[0]?.sha ?? '')
+        : (args['shaLike'] as string)
+    const path = args['path'] as string
+    const bytes = project.snapshots.get(shaLike)?.get(path)
+    if (!bytes) throw new Error(`fs.showVersion: ${shaLike}:${path} not found`)
+    return bytes
+  },
+
+  // ── collab ───────────────────────────────────────────────────────────────────
+
+  'collab.openRoom'(args) {
+    const pid = args['pid'] as string
+    const name = args['name'] as string
+    const scope = (args['scope'] as string | undefined) ?? 'project'
+    // A dev room id is shared across clients opening the same (pid, name, scope);
+    // the dev collab relay (@mythwork/sdk/react devCollabRelayFactory) keys its
+    // in-memory Y bridge on this id so two connect({ dev: true }) peers converge.
+    return {
+      roomId: `dev:${pid}:${scope}:${name}`,
+      serverUrl: 'dev:relay',
+      joinToken: undefined,
+    } satisfies RoomDescriptor
   },
 }
 
@@ -397,7 +643,7 @@ export function createDevHost(): MessagePort {
       response = { id: req.id, error: `Unknown method: ${req.method}` }
     } else {
       try {
-        const result = handler(req.args ?? {}, state)
+        const result = handler(req.args ?? {}, state, { hostPort })
         response = { id: req.id, result }
       } catch (err) {
         response = { id: req.id, error: err instanceof Error ? err.message : String(err) }

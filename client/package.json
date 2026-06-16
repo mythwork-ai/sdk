@@ -1,12 +1,13 @@
 {
   "name": "@mythwork/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "license": "MIT",
   "description": "The Mythwork inner-app client: port handshake, typed request() against the method map, subscribe() against the event map, and thin namespaced helpers (sdk.fs.read, sdk.auth.getUser, ...). Dependency-free except @mythwork/protocol.",
   "exports": {
     ".": "./src/index.ts",
-    "./dev": "./src/dev/host.ts"
+    "./dev": "./src/dev/host.ts",
+    "./react": "./src/react/index.ts"
   },
   "files": [
     "src",
@@ -27,8 +28,38 @@
   "dependencies": {
     "@mythwork/protocol": "workspace:*"
   },
+  "peerDependencies": {
+    "react": ">=18",
+    "y-protocols": "^1.0.0",
+    "y-websocket": ">=2",
+    "yjs": "^13.6.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "y-protocols": {
+      "optional": true
+    },
+    "y-websocket": {
+      "optional": true
+    },
+    "yjs": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "happy-dom": "^15.11.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.7",
+    "y-protocols": "^1.0.6",
+    "y-websocket": "^2.0.0",
+    "yjs": "^13.6.0"
   }
 }

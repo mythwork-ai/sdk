@@ -130,6 +130,116 @@ const off = sdk.subscribe('fs.changed', ({ path, kind }) => {
 
 ---
 
+## React (`@mythwork/sdk/react`)
+
+React bindings over the client, so apps don't hand-roll a provider + hooks. Two
+layers: a **base** provider every app needs, and a **project** layer editor apps
+add on top.
+
+`react`, `yjs`, `y-protocols`, and `y-websocket` are **optional peer
+dependencies** — only the `./react` subpath pulls them; the core `@mythwork/sdk`
+entry stays dependency-free.
+
+### Base layer — `MythworkProvider` + `useMythwork`
+
+Connect once, resolve the user, expose `{ sdk, user, authStatus, signIn, signOut }`:
+
+```tsx
+import { MythworkProvider, useMythwork } from '@mythwork/sdk/react'
+
+function Root() {
+  return (
+    <MythworkProvider>
+      <App />
+    </MythworkProvider>
+  )
+}
+
+function Header() {
+  const { user, authStatus, signIn } = useMythwork()
+  if (authStatus === 'anonymous') return <button onClick={signIn}>Sign in</button>
+  return <span>{user?.kind === 'public' ? user.displayName : 'anon'}</span>
+}
+```
+
+Un-embedded (a dev server / tests) where `connect()` would hang, inject a
+DevHost-backed client via the `connect` seam:
+
+```tsx
+<MythworkProvider connect={() => Promise.resolve(new MythworkClient(myDevHostPort))}>
+```
+
+`useUser()` is a thin projection of the same context for identity-centric code:
+`{ userId, kind, name?, picture?, signIn, signOut }` (`kind: 'pending'` until the
+client connects).
+
+### Project layer — `MythworkProjectProvider` + project hooks
+
+Editor apps open a project, then use the project-scoped hooks (they read `pid`
+from `useProject()` and the client from `useMythwork()`):
+
+```tsx
+import {
+  MythworkProjectProvider, useProject, useFiles, useGit, useCollabRoom,
+} from '@mythwork/sdk/react'
+
+function Match({ pid }: { pid: string }) {
+  return (
+    <MythworkProjectProvider pid={pid}>
+      <Editor />
+    </MythworkProjectProvider>
+  )
+}
+
+function Editor() {
+  const { doc, awareness, status } = useCollabRoom({ name: 'index.html' })
+  const files = useFiles()
+  const git = useGit()
+  // doc/awareness drive a Yjs editor binding (e.g. y-codemirror.next);
+  // files.write + git.commit persist; git.log/head drive history.
+}
+```
+
+- **`useCollabRoom(name | opts)`** → `{ doc, awareness, collaborators, status, syncing, roomId, serverUrl, setAwareness }`. Resolves the room via `sdk.collab.openRoom`, owns the Y.Doc/Awareness/WebsocketProvider (with `?jt=` token). `local: true` binds a zero-network local doc; `noWebsocket` / `instanceId` for tests. (Offline IndexedDB persistence is a planned follow-up — rooms are WS-synced today.)
+- **`useFiles(prefix?)`** → live `paths` + `read/write/list/exists/rename/remove`, version-aware `commit/log/showVersion/diff/checkout`, and `subscribe(handler)` for `fs.changed`. `null` while loading.
+- **`useGit({ depth? })`** → live `head/log/hasUncommittedChanges` + `commit/checkout/.../show` + `refresh()`. `refresh()` is manual; wire `files.subscribe(() => git.refresh())` to track remote commits. `null` while loading.
+
+---
+
+## Local dev & testing — the built-in dev host
+
+`connect({ dev: true })` connects to an in-SDK dev host (dynamically imported, so
+it's tree-shaken from prod builds) — no real host frame, no app-side mock server:
+
+```ts
+const sdk = await connect({ dev: import.meta.env.DEV })
+```
+
+The dev host answers the full surface over generic seed fixtures:
+- **explore / profile / kernel** — discovery, profiles, and auth (sign-in adopts a seeded `devuser`).
+- **project / fs / git / collab** — `project.create`/`open`, `fs.*`, the `fs.commit`/`log`/`head`/`showVersion` git ops, and `collab.openRoom`. Project state is **shared per pid across dev clients**, so two `connect({ dev: true })` clients that open the same project share one file tree + commit log and receive each other's `fs.changed` pushes.
+
+### Live collaboration in dev — `installDevCollabRelay()`
+
+`collab.openRoom` returns a shared dev room id, but live `Y.Doc` convergence needs
+a transport. In dev/test, install the in-memory relay (from `@mythwork/sdk/react`)
+once before mounting collab hooks — two peers sharing a room then converge with no
+WebSocket server:
+
+```ts
+import { connect } from '@mythwork/sdk'
+import { installDevCollabRelay } from '@mythwork/sdk/react'
+
+if (import.meta.env.DEV) installDevCollabRelay()
+const sdk = await connect({ dev: true })
+```
+
+Together these let an editor app run end-to-end — including two-peer multiplayer
+tests — entirely on the SDK, with no platform host. (`createDevHost()` from
+`@mythwork/sdk/dev` returns the raw `MessagePort` for advanced/test wiring.)
+
+---
+
 ## Namespace → wire mapping
 
 The client presents clean namespaces and maps them to the deployed wire method
