@@ -171,6 +171,61 @@ describe('draft explore result passthrough', () => {
   })
 })
 
+describe('profile.me three-state contract (0.2.0)', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+  })
+
+  /** Wire a host that answers profile.me with `result`. */
+  function hostReturning(result: unknown): MythworkClient {
+    chan = new MessageChannel()
+    chan.port2.start()
+    chan.port2.addEventListener('message', e => {
+      const d = e.data as { id: string; method: string }
+      expect(d.method).toBe('profile.me')
+      chan.port2.postMessage({ id: d.id, result })
+    })
+    client = new MythworkClient(chan.port1)
+    return client
+  }
+
+  it('success narrows to the profile branch with handle + isOwner:true guaranteed', async () => {
+    const profile = {
+      handle: 'myhandle',
+      isOwner: true,
+      displayName: 'Me M',
+      bio: 'hi',
+      apps: [],
+    }
+    const res = await hostReturning(profile).profile.me()
+    // The documented discriminant: failures carry `reason`, successes never do.
+    if ('reason' in res) throw new Error('expected the success branch')
+    // Inside the narrowed branch both guaranteed keys are typed, not optional:
+    // `handle` is string, `isOwner` is the literal true.
+    const handle: string = res.handle
+    const isOwner: true = res.isOwner
+    expect(handle).toBe('myhandle')
+    expect(isOwner).toBe(true)
+    expect(res).toEqual(profile)
+  })
+
+  it('signed-out resolves the gated result { ok:false, reason:sign_in_required }', async () => {
+    const res = await hostReturning({ ok: false, reason: 'sign_in_required' }).profile.me()
+    if (!('reason' in res)) throw new Error('expected the gated branch')
+    expect(res).toEqual({ ok: false, reason: 'sign_in_required' })
+  })
+
+  it('unclaimed resolves { ok:false, reason:no_profile } (claim-first affordance)', async () => {
+    const res = await hostReturning({ ok: false, reason: 'no_profile' }).profile.me()
+    if (!('reason' in res)) throw new Error('expected the gated branch')
+    expect(res.ok).toBe(false)
+    expect(res.reason).toBe('no_profile')
+  })
+})
+
 describe('event helpers route to the right push prefix', () => {
   let chan: MessageChannel
   let client: MythworkClient

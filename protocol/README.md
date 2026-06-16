@@ -302,7 +302,7 @@ Conventions for this surface:
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
-| `profile.me` | `{}` | own profile (open shape, `handle` guaranteed) \| `{ ok: false; reason: string }` | **Signed-in (gated-result);** Draft — bridge in flight. The viewer's own profile from the session: `profile.get` shape + the editable fields `profile.update` writes. `no_profile` when unclaimed. Backing: profiles D1 |
+| `profile.me` | `{}` | own profile (open shape, `handle` + `isOwner: true` guaranteed) \| `{ ok: false; reason: string }` | **Signed-in (gated-result);** served on staging (#311), prod pending. The viewer's own profile from the session: `profile.get` shape + the editable fields `profile.update` writes. `no_profile` when unclaimed. Backing: profiles D1 |
 | `profile.myFavorites` | `{ targetKind?: 'creator' \| 'app' }` | `{ items: FavoriteEdge[] }` | **Signed-in;** reads the same edge table `profile.setFavorite` writes (favorites + follows). Backing: favorites D1 |
 | `profile.update` | `{ displayName?: string; bio?: string; location?: string; link?: string }` | `ProfileMutationResult` | **Signed-in;** server owns link normalization. Backing: profiles columns |
 | `profile.getNotificationPrefs` | `{}` | `NotificationPrefs` | **Signed-in.** Backing: notification_prefs D1 |

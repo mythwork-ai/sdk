@@ -39,6 +39,21 @@ export interface ConnectOptions {
    * real browser `window` ({@link browserEnv}). Primarily a testing seam.
    */
   env?: HandshakeEnv
+  /**
+   * When `true`, skip the host handshake and instead connect to the built-in
+   * dev host backed by generic seed fixtures. No app-side mock server required.
+   *
+   * The dev host module is **dynamically imported** so it is excluded from
+   * production bundles when this option is not used.
+   *
+   * @example
+   * ```ts
+   * // vite.config.ts / any bundler entry
+   * import { connect } from '@mythwork/sdk'
+   * const sdk = await connect({ dev: import.meta.env.DEV })
+   * ```
+   */
+  dev?: boolean
 }
 
 /**
@@ -46,10 +61,13 @@ export interface ConnectOptions {
  *
  * Performs the port handshake along whichever path applies:
  *
- * - (a) A platform bootstrap (the serve-worker-injected shim or an SPA
+ * - (a) `opts.dev === true` — connects to the built-in dev host (generic seed
+ *   fixtures, no real host required). The dev host module is dynamically
+ *   imported so it is excluded from production bundles.
+ * - (b) A platform bootstrap (the serve-worker-injected shim or an SPA
  *   entrypoint) already installed `window.__oc.port` — the client discovers it
  *   via the `'ocready'` event / poll, exactly like the internal shim-transport.
- * - (b) No port has appeared — the client runs the `oc-ping` loop itself
+ * - (c) No port has appeared — the client runs the `oc-ping` loop itself
  *   (posting `{ type: 'oc-ping' }` to `window.parent` every `PING_INTERVAL_MS`
  *   within the budget), receives the host's `oc-init` reply carrying the
  *   transferred port, installs it at `window.__oc.port`, and dispatches the same
@@ -58,6 +76,11 @@ export interface ConnectOptions {
  * Rejects with a clear error if no host port appears within `timeoutMs`.
  */
 export async function connect(opts?: ConnectOptions): Promise<MythworkClient> {
+  if (opts?.dev) {
+    // Dynamic import keeps the dev host + seed out of production bundles.
+    const { createDevHost } = await import('./dev/host')
+    return new MythworkClient(createDevHost())
+  }
   const env = opts?.env ?? browserEnv()
   const port = await acquirePort(env, { timeoutMs: opts?.timeoutMs })
   return new MythworkClient(port)

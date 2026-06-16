@@ -311,7 +311,8 @@ export class MythworkClient {
     setFavorite: (params: MethodParams<'profile.setFavorite'>, opts?: RequestOptions) =>
       this.request('profile.setFavorite', params, opts),
     /**
-     * @experimental Draft — bridge in flight. The signed-in viewer's OWN
+     * @experimental Served on staging (mythwork#311); prod rollout
+     * pending. The signed-in viewer's OWN
      * profile resolved server-side from the session (no handle derivation).
      * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }` with
      * zero network; unclaimed resolves `{ ok: false, reason: 'no_profile' }`.

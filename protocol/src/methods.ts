@@ -525,15 +525,16 @@ export interface MethodMap {
   // evolve before 1.0). These extend the deployed `profile.*` namespace above.
 
   /**
-   * @experimental Draft — bridge in flight (the GET /profile/me endpoint +
-   * bridge entry are being built; this marker flips to served on deploy).
+   * @experimental Served on staging by the mythwork#311 bridge (deployed
+   * 2026-06-12); prod rollout pending — marker tightens to a plain
+   * served-by note when both stages carry it.
    *
    * The signed-in viewer's OWN profile, resolved server-side from the session
    * — replaces the rejected-as-brittle handle derivation from
    * `getUser().profileUrl`. Same open shape as `profile.get` plus the editable
    * fields `profile.update` writes (`displayName`, `bio`, `location`, `link`),
-   * so a settings screen reads exactly what it writes; `handle` is the one
-   * guaranteed key. Posture: gated-result — signed-out resolves
+   * so a settings screen reads exactly what it writes; `handle` and
+   * `isOwner: true` are the guaranteed keys. Posture: gated-result — signed-out resolves
    * `{ ok: false, reason: 'sign_in_required' }` with ZERO network; a signed-in
    * viewer who never claimed a handle resolves
    * `{ ok: false, reason: 'no_profile' }` (render the claim-first affordance).
@@ -542,7 +543,9 @@ export interface MethodMap {
    */
   'profile.me': {
     params: Record<string, never>
-    result: { ok: false; reason: string } | (Record<string, unknown> & { handle: string })
+    result:
+      | { ok: false; reason: string }
+      | (Record<string, unknown> & { handle: string; isOwner: true })
   }
   /**
    * @experimental Served by hosts running mythwork#296+ (API surface may
