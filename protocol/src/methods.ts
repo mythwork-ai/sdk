@@ -1,8 +1,7 @@
 // The canonical method table: one entry per wire method, each declaring its
 // `params` (the request `args`) and `result` (the response `result`). This IS
-// the contract — the client is mechanical on top of it. Every shape below is
-// verified against its host bridge handler (packages/host-iframe/src/bridges/*)
-// and, where applicable, its inner-app consumer (packages/orbit-*/src/*).
+// the contract — the client is mechanical on top of it. Every shape is
+// verified against the host bridge it maps to.
 //
 // Wire method strings keep their deployed names even where they leak old
 // naming (`kernel.getUser`, `db.get`, git ops under `fs.*`); the client maps
@@ -45,7 +44,7 @@ export type ProfileMutationResult =
  * declares the request `params` and the response `result`.
  */
 export interface MethodMap {
-  // ── project.* (bridges/project.ts) ──────────────────────────────────────
+  // ── project.* ───────────────────────────────────────────────────────────
 
   /**
    * Create a new local-first project (mints a localId host-side, zero network).
@@ -89,7 +88,7 @@ export interface MethodMap {
     result: { projectId: string; publicCollab: boolean }
   }
 
-  // ── fs.* file ops (bridges/fs.ts) ───────────────────────────────────────
+  // ── fs.* file ops ───────────────────────────────────────────────────────
 
   /** Read a file's bytes. Rejects if the file does not exist. */
   'fs.read': { params: { pid: string; path: string }; result: Uint8Array }
@@ -104,9 +103,9 @@ export interface MethodMap {
   /** Delete a file. */
   'fs.delete': { params: { pid: string; path: string }; result: Ok }
 
-  // ── fs.* git ops — share the fs.* prefix but route to the git bridge
-  //    (bridges/git.ts). Signed-in server ops (commit, commitTree,
-  //    deleteCommit, editCommitMessage) associate a canonical projectId first.
+  // ── fs.* git ops — share the fs.* prefix but route to the git bridge.
+  //    Signed-in server ops (commit, commitTree, deleteCommit,
+  //    editCommitMessage) associate a canonical projectId first.
 
   /**
    * Commit the working tree. `author` overrides the default commit author.
@@ -159,7 +158,7 @@ export interface MethodMap {
   /** Flush any dirty in-memory docs to the filesystem. */
   'fs.flushDirty': { params: { pid: string }; result: Ok }
 
-  // ── collab.* (bridges/collab.ts) ────────────────────────────────────────
+  // ── collab.* ────────────────────────────────────────────────────────────
 
   /**
    * Resolve a collaborative room for the project. `scope` defaults to
@@ -171,12 +170,12 @@ export interface MethodMap {
     result: RoomDescriptor
   }
 
-  // ── config.* (bridges/config.ts) ────────────────────────────────────────
+  // ── config.* ────────────────────────────────────────────────────────────
 
   /** Read the project's parsed config (always carries a `projectId`). */
   'config.get': { params: { pid: string }; result: ProjectConfig }
 
-  // ── secrets.* (bridges/secrets.ts) ──────────────────────────────────────
+  // ── secrets.* ───────────────────────────────────────────────────────────
 
   /**
    * Report whether a named server-managed secret is set for the project. Never
@@ -197,7 +196,7 @@ export interface MethodMap {
     result: { status: number; headers: Record<string, string>; body: string }
   }
 
-  // ── ydocs.* (bridges/ydocs.ts) ──────────────────────────────────────────
+  // ── ydocs.* ─────────────────────────────────────────────────────────────
   // @internal maturity: a complete spec, but apps normally reach these through
   // higher-level libraries (the y-indexeddb shim) rather than calling directly.
 
@@ -226,7 +225,7 @@ export interface MethodMap {
    */
   'ydocs.clear': { params: { pid: string; docName: string }; result: Ok }
 
-  // ── profile.* (bridges/profile.ts) ──────────────────────────────────────
+  // ── profile.* ───────────────────────────────────────────────────────────
   // Reads flow straight through; mutations are gated by a host-rendered consent
   // dialog the app can't spoof. Mutation results use ProfileMutationResult so a
   // denied/conflicting call resolves to `{ ok: false, reason }` rather than
@@ -278,7 +277,7 @@ export interface MethodMap {
     result: { ok: false; reason: string } | { ok: true; favorited: boolean; count: number }
   }
 
-  // ── publish.* (bridges/publish.ts) ──────────────────────────────────────
+  // ── publish.* ───────────────────────────────────────────────────────────
 
   /**
    * Publish the project's HEAD under `shortName`. Requires sign-in (associates a
@@ -290,7 +289,7 @@ export interface MethodMap {
     result: { canonical: string; alias: string | null }
   }
 
-  // ── kernel.* (bridges/kernel.ts) ────────────────────────────────────────
+  // ── kernel.* ────────────────────────────────────────────────────────────
 
   /** Resolve the current user. Returns the anonymous sentinel when signed out. */
   'kernel.getUser': { params: Record<string, never>; result: User }
@@ -306,7 +305,7 @@ export interface MethodMap {
    */
   'kernel.signOut': { params: Record<string, never>; result: User }
 
-  // ── db.* (host-iframe/src/db/index.ts) ──────────────────────────────────
+  // ── db.* ────────────────────────────────────────────────────────────────
   // @internal maturity: a complete spec, but apps normally reach these through
   // higher-level libraries (the key-value store helpers) rather than calling
   // directly. Note: db.* runs on the SAME port but is dispatched by the db
@@ -341,27 +340,25 @@ export interface MethodMap {
    */
   'db.sync': { params: Record<string, never>; result: null }
 
-  // ── explore.* (bridge shipped in mythwork#296) ──────────────────────────
-  // @experimental Served by hosts running mythwork#296+ (API surface may still
-  // evolve before 1.0). These map to api-worker discovery/engagement
-  // endpoints the host frame fulfills with a host-attached Bearer (the same
-  // shape as `profile.*` today). All reads are public/anonymous-OK; an attached
-  // session enriches rows (`favoritedByViewer`, my rating). Engagement writes
-  // and `/me`-style reads are sign-in gated host-side. Discovery operates on
-  // canonical project ids: the param is `projectId`, never `pid`. Pagination
-  // uses `{ cursor? }` → `{ items, nextCursor? }` (nextCursor absent on the
-  // last page).
+  // ── explore.* ───────────────────────────────────────────────────────────
+  // @experimental — API may still evolve before 1.0. These map to api-worker
+  // discovery/engagement endpoints the host frame fulfills with a host-attached
+  // Bearer. All reads are public/anonymous-OK; an attached session enriches
+  // rows (`favoritedByViewer`, my rating). Engagement writes and `/me`-style
+  // reads are sign-in gated host-side. Discovery operates on canonical project
+  // ids: the param is `projectId`, never `pid`. Pagination uses
+  // `{ cursor? }` → `{ items, nextCursor? }` (nextCursor absent on the last
+  // page).
   //
-  // Error posture (per the #296 bridge): READS throw — a stale-token 401
-  // propagates as an error ('<method> failed: 401', no silent anonymous
-  // downgrade) and existence-hiding 404s on getApp throw likewise. WRITES
-  // (rate, clearRating, addComment) plus the one viewer read myRatings return
-  // `{ ok: false, reason }` as a RESULT instead: 'sign_in_required' with zero
-  // network when signed out, or the api's mapped 400/403/404 reason.
+  // Error posture: READS throw — a stale-token 401 propagates as an error
+  // ('<method> failed: 401', no silent anonymous downgrade) and
+  // existence-hiding 404s on getApp throw likewise. WRITES (rate, clearRating,
+  // addComment) plus the one viewer read myRatings return `{ ok: false, reason
+  // }` as a RESULT instead: 'sign_in_required' with zero network when signed
+  // out, or the api's mapped 400/403/404 reason.
 
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * List published apps for discovery, filtered by `tags` (all-of), `maker`
    * (handle), and ordered by `sort` (default host-side `'popular'`). Public
@@ -373,8 +370,7 @@ export interface MethodMap {
     result: { items: AppSummary[]; nextCursor?: string }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Read one app's full detail by canonical `projectId`. Public read; an
    * attached session enriches `favoritedByViewer`. Backing: same tables as
@@ -382,8 +378,7 @@ export interface MethodMap {
    */
   'explore.getApp': { params: { projectId: string }; result: AppDetail }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Apps related to the given `projectId` (shared tags). Public read.
    * Backing: app_tags.
@@ -393,8 +388,7 @@ export interface MethodMap {
     result: { items: AppSummary[] }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * The trending rail (7d vs prev-7d launches). Public read.
    * Backing: app_stats.
@@ -404,15 +398,13 @@ export interface MethodMap {
     result: { items: AppSummary[] }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Every tag with its app count. Public read. Backing: app_tags.
    */
   'explore.tags': { params: Record<string, never>; result: { items: TagCount[] } }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Search apps and makers by free text `q`. The `@handle` and `#tag` operators
    * are interpreted server-side. Public read. Backing: LIKE over
@@ -423,8 +415,7 @@ export interface MethodMap {
     result: { apps: AppSummary[]; makers: MakerSummary[] }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * The seeded list of popular search terms. Public read.
    * Backing: editorial row / tiny table.
@@ -434,21 +425,19 @@ export interface MethodMap {
     result: { items: string[] }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * The single editorial spotlight slot. Public read. An empty slot is an
-   * expected state: `item` is `null` until the slot is seeded (settled on
-   * mythwork#296 — the api 200s with `{ item: null }`, never 404s).
-   * Backing: editorial_spotlight (ops-seeded).
+   * expected state: `item` is `null` until the slot is seeded (the api 200s
+   * with `{ item: null }`, never 404s). Backing: editorial_spotlight
+   * (ops-seeded).
    */
   'explore.spotlight': {
     params: Record<string, never>
     result: { item: SpotlightItem | null }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * The editorial collections list. Public read.
    * Backing: editorial_collections (ops-seeded).
@@ -458,8 +447,7 @@ export interface MethodMap {
     result: { items: CollectionInfo[] }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Rate an app 1–5 stars. Signed-in: when no session exists the bridge
    * returns `{ ok: false, reason: 'sign_in_required' }` without touching the
@@ -471,8 +459,7 @@ export interface MethodMap {
     result: Ok | { ok: false; reason: string }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Clear the viewer's rating on an app (re-clicking the current star clears).
    * Signed-in; same `{ ok: false, reason }` result behavior as `explore.rate`.
@@ -483,8 +470,7 @@ export interface MethodMap {
     result: Ok | { ok: false; reason: string }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * The viewer's ratings, mapping canonical `projectId` → stars. Signed-in:
    * with no session the bridge returns `{ ok: false, reason:
@@ -496,8 +482,7 @@ export interface MethodMap {
     result: { ratings: Record<string, number> } | { ok: false; reason: string }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Read an app's comments, newest first, one level of nesting. Public read.
    * Paginated. Backing: comments D1.
@@ -507,8 +492,7 @@ export interface MethodMap {
     result: { items: CommentNode[]; nextCursor?: string }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Add a comment, or a reply when `parentCommentId` is present. Replies cannot
    * be nested further (server-enforced one level). Signed-in; same
@@ -519,27 +503,41 @@ export interface MethodMap {
     params: { projectId: string; body: string; parentCommentId?: string }
     result: CommentNode | { ok: false; reason: string }
   }
+  /**
+   * @experimental Draft surface — not yet served by deployed hosts (the api
+   * route + host bridge are in progress; myth-backend-api).
+   *
+   * Owner-update an app's editable metadata for canonical `projectId`. The
+   * fields are stored as an owner OVERRIDE that the read path layers OVER the
+   * publish-derived `name`/`tagline` (so an edit survives the owner's next
+   * republish, rather than being clobbered by the index pipeline); `note` is
+   * the maker's note. Owner-gated, posture gated-result: signed-out resolves
+   * `{ ok: false, reason: 'sign_in_required' }` with ZERO network; a non-owner
+   * → `{ ok: false, reason: 'forbidden' }`; an unknown app → `{ ok: false,
+   * reason: 'not_found' }`. On success resolves the updated {@link AppDetail}.
+   * Backing: app_meta D1 (owner-override), layered by get-app/summary.
+   */
+  'explore.updateAppMeta': {
+    params: { projectId: string; name?: string; tagline?: string; note?: string }
+    result: AppDetail | { ok: false; reason: string }
+  }
 
-  // ── profile.* (additions served in mythwork#296) ───────────────────────
-  // @experimental Served by hosts running mythwork#296+ (API surface may still
-  // evolve before 1.0). These extend the deployed `profile.*` namespace above.
+  // ── profile.* (additions) ───────────────────────────────────────────────
+  // @experimental — API may still evolve before 1.0. These extend the
+  // deployed `profile.*` namespace above.
 
   /**
-   * @experimental Served on staging by the mythwork#311 bridge (deployed
-   * 2026-06-12); prod rollout pending — marker tightens to a plain
-   * served-by note when both stages carry it.
+   * @experimental — API may still evolve before 1.0.
    *
-   * The signed-in viewer's OWN profile, resolved server-side from the session
-   * — replaces the rejected-as-brittle handle derivation from
-   * `getUser().profileUrl`. Same open shape as `profile.get` plus the editable
-   * fields `profile.update` writes (`displayName`, `bio`, `location`, `link`),
-   * so a settings screen reads exactly what it writes; `handle` and
-   * `isOwner: true` are the guaranteed keys. Posture: gated-result — signed-out resolves
+   * The signed-in viewer's OWN profile, resolved server-side from the session.
+   * Same open shape as `profile.get` plus the editable fields `profile.update`
+   * writes (`displayName`, `bio`, `location`, `link`), so a settings screen
+   * reads exactly what it writes; `handle` and `isOwner: true` are the
+   * guaranteed keys. Posture: gated-result — signed-out resolves
    * `{ ok: false, reason: 'sign_in_required' }` with ZERO network; a signed-in
    * viewer who never claimed a handle resolves
    * `{ ok: false, reason: 'no_profile' }` (render the claim-first affordance).
-   * Discriminate on `'reason' in result`. Descriptor entry #2 in
-   * `API_METHOD_DESCRIPTORS`. Backing: profiles D1.
+   * Discriminate on `'reason' in result`. Backing: profiles D1.
    */
   'profile.me': {
     params: Record<string, never>
@@ -548,8 +546,7 @@ export interface MethodMap {
       | (Record<string, unknown> & { handle: string; isOwner: true })
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * The viewer's favorites/follows, optionally filtered by `targetKind`. Reads
    * the same edge table `profile.setFavorite` writes (covers both favorites and
@@ -560,8 +557,7 @@ export interface MethodMap {
     result: { items: FavoriteEdge[] }
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Update the viewer's structured profile fields. Signed-in (signed-out
    * THROWS, consistent with the deployed `profile.*` mutations — unlike the
@@ -577,8 +573,7 @@ export interface MethodMap {
     result: ProfileMutationResult
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Read the viewer's notification preferences. Signed-in.
    * Backing: notification_prefs D1.
@@ -588,8 +583,7 @@ export interface MethodMap {
     result: NotificationPrefs
   }
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Update some notification preferences; returns the full updated prefs.
    * Signed-in. Backing: notification_prefs D1.
@@ -599,8 +593,7 @@ export interface MethodMap {
     result: NotificationPrefs
   }
   /**
-   * @experimental Served by hosts running mythwork#299+#301+ (API surface may
-   * still evolve before 1.0).
+   * @experimental — API may still evolve before 1.0.
    *
    * Submit the full claim in one authed call: lead fields (`name`, `email` —
    * contact preference, not identity) plus the REAL platform handle (claimed
@@ -615,8 +608,7 @@ export interface MethodMap {
    * idempotent ok; claiming a DIFFERENT handle is an atomic rename (old handle
    * freed + new one claimed in one write); the handle claim runs BEFORE the
    * lead upsert, so `handle_taken` fails the call without writing an orphan
-   * lead row (retry-safe). First entry in `API_METHOD_DESCRIPTORS` (AGE-69).
-   * Backing: claims D1 (lead) + profiles D1 (handle).
+   * lead row (retry-safe). Backing: claims D1 (lead) + profiles D1 (handle).
    */
   'profile.submitClaim': {
     params: {

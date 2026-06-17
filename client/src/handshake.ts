@@ -1,28 +1,23 @@
 // Port acquisition: getting the MessagePort the rest of the client talks over.
 //
-// Two paths, both faithful to deployed production behavior. Investigation of
-// the live source (cited below) shows the inner-app side splits into:
+// Two paths, both faithful to deployed production behavior:
 //
-//   (a) A platform bootstrap already ran. The serve-worker injects
-//       `shared/bundler/orbit-shim.ts`, and SPA entrypoints
-//       (apps/lab-nav/src/main.tsx:43-52, apps/website-tennis/src/main.tsx:35)
-//       run the oc-ping loop, install the transferred port at
-//       `window.__oc.port`, and dispatch a `'ocready'` window Event. When that
-//       has happened (or is in flight), the client only needs to DISCOVER the
-//       port — poll `window.__oc.port` and listen for `'ocready'`, exactly like
-//       packages/orbit-shim-transport/src/index.ts:18-42 does.
+//   (a) A platform bootstrap already ran. The serve-worker injected the
+//       orbit-shim, which ran the oc-ping loop, installed the transferred port
+//       at `window.__oc.port`, and dispatched a `'ocready'` window Event. When
+//       that has happened (or is in flight), the client only needs to DISCOVER
+//       the port — poll `window.__oc.port` and listen for `'ocready'`.
 //
 //   (b) No platform bootstrap installed a port. Then the client must run the
 //       handshake ITSELF: post `{ type: 'oc-ping' }` to `window.parent` every
-//       PING_INTERVAL_MS within PING_BUDGET_MS (the loop from
-//       orbit-shim.ts:218-223 / main.tsx:43-52), listen for the host's
+//       PING_INTERVAL_MS within PING_BUDGET_MS, listen for the host's
 //       `{ type: 'oc-init', shareBaseOrigin }` reply carrying the transferred
-//       MessagePort (the inner handler from main.tsx:19-31), install it at
-//       `window.__oc.port`, and dispatch the same `'ocready'` event the platform
-//       fires — so any co-resident shim-transport converges on the same port.
+//       MessagePort, install it at `window.__oc.port`, and dispatch the same
+//       `'ocready'` event the platform fires — so any co-resident shim-transport
+//       converges on the same port.
 //
-// The host side (packages/host-iframe/src/db/index.ts:492-513) replies with the
-// port on the FIRST oc-ping it sees; either path's ping drives that reply.
+// The host replies with the port on the FIRST oc-ping it sees; either path's
+// ping drives that reply.
 //
 // Everything reaches `window`/`MessagePort` through an injectable {@link
 // HandshakeEnv} seam so the state machine is unit-testable with a minimal
@@ -140,7 +135,7 @@ export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise
       cleanup()
       port.start()
       // Install + announce so a co-resident shim-transport converges on this
-      // same port (mirrors orbit-shim oc-init handling).
+      // same port.
       if (!env.getOcGlobal()?.port) env.setOcGlobal({ port })
       resolve(port)
     }
@@ -153,7 +148,7 @@ export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise
     }
 
     // Path (b): we drive the handshake. The host replies oc-init transferring
-    // the port; install it ourselves (mirrors apps/lab-nav main.tsx:19-31).
+    // the port; install it ourselves and announce via 'ocready'.
     const onMessage = (e: Event) => {
       const me = e as MessageEvent
       const d = me.data as { type?: string } | null

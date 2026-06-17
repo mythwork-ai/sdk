@@ -1,16 +1,15 @@
 // Handshake constants + message shapes for acquiring the MessagePort.
 //
-// Verified against the deployed handshake in the monorepo:
-//   - packages/orbit-shim-transport/src/index.ts (inner-app port discovery,
-//     default request timeout)
-//   - packages/host-iframe/src/db/index.ts (~lines 446-514: host sends oc-init
-//     transferring the port; ping-driven retry loop)
+// Two bootstrap paths both converge on the same port global (OC_PORT_GLOBAL):
+//   a. Platform bootstrap: the host pre-installs the port before the inner
+//      app loads — `window.__oc.port` is already populated on first script
+//      execution; no ping exchange needed.
+//   b. Client-driven: the inner app polls `{ type: 'oc-ping' }` (every
+//      PING_INTERVAL_MS, up to PING_BUDGET_MS) until the host replies
+//      `{ type: 'oc-init', shareBaseOrigin }` with a transferred MessagePort,
+//      which the shim parks at `window.__oc.port`.
 //
-// The flow: the inner app polls `{ type: 'oc-ping' }` (every PING_INTERVAL_MS,
-// up to PING_BUDGET_MS) until the host replies `{ type: 'oc-init',
-// shareBaseOrigin }` with a transferred MessagePort. The inner-app shim parks
-// that port at `window.__oc.port` (see OC_PORT_GLOBAL / OcGlobal). All
-// subsequent RPC and push traffic flows over that single port.
+// All subsequent RPC and push traffic flows over that single port.
 
 /**
  * Protocol version. Exported for documentation only — there is NO version field

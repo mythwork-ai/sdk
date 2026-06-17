@@ -51,4 +51,4 @@ Full rationale, wire compatibility notes, and implementation phases:
 
 ## Versions
 
-Current: `0.2.0` (both packages move in lockstep).
+Current: `0.4.0` (both packages move in lockstep).

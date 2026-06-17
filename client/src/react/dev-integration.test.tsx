@@ -8,11 +8,14 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cleanup, render, waitFor } from '@testing-library/react'
-import type * as Y from 'yjs'
+import { Awareness } from 'y-protocols/awareness'
+import * as Y from 'yjs'
 import { connect } from '../index'
 import { _resetDevHostForTests } from '../dev/host'
 import {
   _resetCollabForTests,
+  type CollabRoomHandle,
+  devCollabRelayFactory,
   installDevCollabRelay,
   MythworkProjectProvider,
   MythworkProvider,
@@ -89,5 +92,55 @@ describe('@mythwork/sdk dev stack — two peers on connect({ dev: true })', () =
 
     expect(a.queryByTestId('p-A')?.textContent).toBe('ready')
     expect(b.queryByTestId('p-B')?.textContent).toBe('ready')
+  })
+
+  it('relay bridges awareness directly (no React)', () => {
+    const docA = new Y.Doc()
+    const awA = new Awareness(docA)
+    const docB = new Y.Doc()
+    const awB = new Awareness(docB)
+    devCollabRelayFactory('dev:relay', 'room1', docA, { awareness: awA })
+    devCollabRelayFactory('dev:relay', 'room1', docB, { awareness: awB })
+
+    awA.setLocalStateField('user', { name: 'Andre' })
+    const seen = awB.getStates().get(docA.clientID) as { user?: { name?: string } } | undefined
+    expect(seen?.user?.name).toBe('Andre')
+  })
+
+  it('awareness presence converges across peers (relay bridges awareness)', async () => {
+    const clientA = await connect({ dev: true })
+    const clientB = await connect({ dev: true })
+    const { pid } = await clientA.project.create({ projectName: 'match' })
+
+    let roomA: CollabRoomHandle | undefined
+    let roomB: CollabRoomHandle | undefined
+    function Inner({ id }: { id: 'A' | 'B' }): React.JSX.Element {
+      const room = useCollabRoom({ name: 'index.html' })
+      if (id === 'A') roomA = room
+      else roomB = room
+      return <div data-testid={`p-${id}`}>{room.doc ? 'ready' : 'loading'}</div>
+    }
+    function Peer({ id, client }: { id: 'A' | 'B'; client: typeof clientA }) {
+      return (
+        <MythworkProvider connect={() => Promise.resolve(client)}>
+          <MythworkProjectProvider pid={pid}>
+            <Inner id={id} />
+          </MythworkProjectProvider>
+        </MythworkProvider>
+      )
+    }
+    render(<Peer id="A" client={clientA} />)
+    render(<Peer id="B" client={clientB} />)
+    await waitFor(() => {
+      expect(roomA?.doc).toBeTruthy()
+      expect(roomB?.doc).toBeTruthy()
+    })
+
+    // A announces presence; B should see A as a non-local collaborator.
+    roomA!.setAwareness('user', { name: 'Andre', email: 'andre@x' })
+    await waitFor(() => {
+      const remote = roomB!.collaborators.find(c => !c.isLocal)
+      expect(remote?.name).toBe('Andre')
+    })
   })
 })

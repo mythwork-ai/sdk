@@ -84,12 +84,9 @@ Pushes carry **no `id`**. The `type` field is the event string (a key of
 ---
 
 > The catalog below (**49 methods**, **7 events**) documents the original
-> deployed-v1 surface. A separate **Explore surface (served by mythwork#296+)**
-> section near the end describes the **+19** explore/engagement methods: **18**
-> of them now ship in the host bridges merged by mythwork#296 (and are served by
-> any host running that build or later), while **`project.remix`** is the lone
-> still-unserved method (no bridge yet). All **+19** remain `@experimental` —
-> served, but the API surface may still evolve before 1.0.
+> deployed-v1 surface. A separate **Explore surface** section near the end
+> describes the **+19** explore/engagement methods. All **+19** are
+> `@experimental` — the API surface may still evolve before 1.0.
 
 ## Methods catalog
 
@@ -252,19 +249,15 @@ the `type` field.
 
 ---
 
-## Explore surface (served by mythwork#296+)
+## Explore surface
 
 > **`@experimental` — kept separate from the original deployed-v1 catalog above
 > on purpose.** The methods and types in this section back the explore /
-> engagement backend (api worker + D1 + host bridges). **18 of these 19 methods
-> now ship in the host bridges merged by mythwork#296**
-> (`packages/host-iframe/src/bridges/explore.ts` + the `profile.*` additions in
-> `bridges/profile.ts`) and are served by any host running that build or later.
-> The one exception is **`project.remix`**, which still has **no bridge** and is
-> **not yet served**. The v1 catalog above documents the original surface
-> (**49 methods**, **7 events**); this section adds **+19 methods** and the data
-> types they use. Everything here stays `@experimental` — the API surface may
-> still evolve before 1.0.
+> engagement backend. The one exception is **`project.remix`**, which still has
+> **no bridge** and is **not yet served**. The v1 catalog above documents the
+> original surface (**49 methods**, **7 events**); this section adds **+19
+> methods** and the data types they use. Everything here stays `@experimental`
+> — the API surface may still evolve before 1.0.
 
 Conventions for this surface:
 
@@ -279,7 +272,7 @@ Conventions for this surface:
 
 ### Methods (+19)
 
-#### explore.* (14 — served by mythwork#296+)
+#### explore.* (14)
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
@@ -298,16 +291,16 @@ Conventions for this surface:
 | `explore.comments` | `{ projectId: string; cursor?: string }` | `{ items: CommentNode[]; nextCursor?: string }` | Public; newest first, one nesting level. Backing: comments D1 |
 | `explore.addComment` | `{ projectId: string; body: string; parentCommentId?: string }` | `CommentNode \| { ok: false; reason: string }` | **Signed-in;** `parentCommentId` present = reply (cannot nest further). Backing: comments D1 |
 
-#### profile.* (4 additions — served by mythwork#296+)
+#### profile.* (4 additions)
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
-| `profile.me` | `{}` | own profile (open shape, `handle` + `isOwner: true` guaranteed) \| `{ ok: false; reason: string }` | **Signed-in (gated-result);** served on staging (#311), prod pending. The viewer's own profile from the session: `profile.get` shape + the editable fields `profile.update` writes. `no_profile` when unclaimed. Backing: profiles D1 |
+| `profile.me` | `{}` | own profile (open shape, `handle` + `isOwner: true` guaranteed) \| `{ ok: false; reason: string }` | **Signed-in (gated-result).** The viewer's own profile from the session: `profile.get` shape + the editable fields `profile.update` writes. `no_profile` when unclaimed. Backing: profiles D1 |
 | `profile.myFavorites` | `{ targetKind?: 'creator' \| 'app' }` | `{ items: FavoriteEdge[] }` | **Signed-in;** reads the same edge table `profile.setFavorite` writes (favorites + follows). Backing: favorites D1 |
 | `profile.update` | `{ displayName?: string; bio?: string; location?: string; link?: string }` | `ProfileMutationResult` | **Signed-in;** server owns link normalization. Backing: profiles columns |
 | `profile.getNotificationPrefs` | `{}` | `NotificationPrefs` | **Signed-in.** Backing: notification_prefs D1 |
 | `profile.setNotificationPrefs` | `Partial<NotificationPrefs>` | `NotificationPrefs` | **Signed-in;** returns the full updated prefs. Backing: notification_prefs D1 |
-| `profile.submitClaim` | `{ name: string; email: string; handle: string; acceptedTerms: true; survey?: Record<string, unknown> }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result);** served by #299+#301+. One authed call: lead fields + the real platform handle (different handle = atomic rename; handle claim runs before the lead upsert, retry-safe); `survey` is an opaque app blob. Backing: claims + profiles D1 |
+| `profile.submitClaim` | `{ name: string; email: string; handle: string; acceptedTerms: true; survey?: Record<string, unknown> }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result).** One authed call: lead fields + the real platform handle (different handle = atomic rename; handle claim runs before the lead upsert, retry-safe); `survey` is an opaque app blob. Backing: claims + profiles D1 |
 
 #### project.* (1 addition — draft, not yet served)
 
@@ -322,7 +315,7 @@ Conventions for this surface:
 > No new events. Live counters (`explore.statsChanged`, `explore.commentAdded`)
 > are possible future pushes; v1 polls.
 
-### Data types (served by mythwork#296+)
+### Data types
 
 | Type | Description |
 |---|---|

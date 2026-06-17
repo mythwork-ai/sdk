@@ -1,13 +1,10 @@
 // Pure data types referenced by the method and event maps. These are the
-// canonical copies the protocol owns — the package defines its own copy rather
-// than importing from internal monorepo packages, so it stays self-contained.
-// Each shape is verified against the live host behavior cited inline.
+// canonical copies the protocol owns — the package defines its own copy so it
+// stays self-contained. Each shape is verified against the live host behavior.
 
 /**
  * The resolved platform identity of the current user. A discriminated union on
- * `kind`. Verified against
- * packages/orbit-kernel/src/auth/kernel-shim-client.ts:19-28 (and mirrored by
- * the host bridge that produces it).
+ * `kind`.
  *
  * - `anonymous`: no authenticated session (sentinel `userId: 'anonymous'`).
  * - `pseudonymous`: signed in under a project-scoped display name.
@@ -26,9 +23,8 @@ export type User =
 
 /**
  * Commit author override accepted by the git write methods (`fs.commit`,
- * `fs.commitTree`). Verified against packages/orbit-kernel/src/git/types.ts and
- * the bridge that passes it through (packages/host-iframe/src/bridges/git.ts).
- * When omitted, the host applies the registry-configured default author.
+ * `fs.commitTree`). When omitted, the host applies the registry-configured
+ * default author.
  */
 export interface CommitAuthor {
   name: string
@@ -36,10 +32,9 @@ export interface CommitAuthor {
 }
 
 /**
- * One commit as returned by `fs.log`. Verified against
- * packages/orbit-kernel/src/git/types.ts (the bridge returns `git.log()`
- * directly). `timestamp` is a `Date` — it survives structured clone, so it
- * arrives as a real `Date` on the inner side, not a string.
+ * One commit as returned by `fs.log`. `timestamp` is a `Date` — it survives
+ * structured clone, so it arrives as a real `Date` on the inner side, not a
+ * string.
  */
 export interface CommitInfo {
   sha: string
@@ -67,13 +62,9 @@ export interface DiffHunk {
 }
 
 /**
- * One changed file as returned by `fs.diff`. Verified against the WIRE result:
- * the bridge (packages/host-iframe/src/bridges/git.ts) returns `git.diff()`,
- * whose element type is `StructuredDiff` in
- * packages/orbit-kernel/src/git/types.ts — i.e. `{ filepath, status, hunks }`,
- * NOT the slimmer `{ path, status }` an internal consumer (orbit-file) types it
- * as. The structured form (with line-level hunks) is what actually crosses the
- * port.
+ * One changed file as returned by `fs.diff`. The wire shape is
+ * `{ filepath, status, hunks }` — the structured form with line-level hunks is
+ * what actually crosses the port.
  */
 export interface DiffEntry {
   filepath: string
@@ -83,11 +74,10 @@ export interface DiffEntry {
 
 /**
  * The descriptor `collab.openRoom` returns for joining a collaborative room.
- * Verified against packages/orbit-collab/src/collab-funcs.ts:85-96 and the
- * bridge (packages/host-iframe/src/bridges/collab.ts). For an associated
- * (canonical) project this names a server room with a signed `joinToken`; for a
- * local-only project the host returns a `local:<scope>:<name>` descriptor with
- * an empty `serverUrl` and no `joinToken`.
+ * For an associated (canonical) project this names a server room with a signed
+ * `joinToken`; for a local-only project the host returns a
+ * `local:<scope>:<name>` descriptor with an empty `serverUrl` and no
+ * `joinToken`.
  */
 export interface RoomDescriptor {
   roomId: string
@@ -102,15 +92,13 @@ export interface RoomDescriptor {
 
 /**
  * A project's role within the session. `leader` owns authoritative writes;
- * `follower` mirrors. Verified against the `{ pid, role }` results returned by
- * the project bridge (packages/host-iframe/src/bridges/project.ts).
+ * `follower` mirrors.
  */
 export type ProjectRole = 'leader' | 'follower'
 
 /**
  * The identity returned by project open/create: the local handle id (`pid`) and
- * the session {@link ProjectRole}. Verified against `project.create` /
- * `project.open` returning `{ pid: project.pid, role: project.role }`.
+ * the session {@link ProjectRole}.
  */
 export interface ProjectInfo {
   pid: string
@@ -120,29 +108,24 @@ export interface ProjectInfo {
 /**
  * The parsed `orbitcode.config.json` returned by `config.get`. Always carries a
  * `projectId` (the host backfills it to the `pid` when the file is missing or
- * lacks one) plus whatever else the project's config holds. Verified against
- * packages/host-iframe/src/bridges/config.ts.
+ * lacks one) plus whatever else the project's config holds.
  */
 export type ProjectConfig = { projectId: string } & Record<string, unknown>
 
 /**
  * The trivial success acknowledgement returned by void-like methods (writes,
- * deletes, etc.). Verified against the bridges that return `{ ok: true }`.
+ * deletes, etc.).
  */
 export type Ok = { ok: true }
 
-// ── explore surface (served by mythwork#296+) ───────────────────────────────
-// @experimental Served by hosts running mythwork#296+ (API surface may still
-// evolve before 1.0). The shapes below back the `explore.*` and the new
-// `profile.*` methods, reconciled entry-by-entry against the shipped host
-// bridges (packages/host-iframe/src/bridges/explore.ts + profile.ts).
-// Timestamps are epoch milliseconds as `number`
-// (field suffix `At`): the payloads originate as D1 integers and cross JSON, so
-// no `Date` is used here.
+// ── explore surface ─────────────────────────────────────────────────────────
+// @experimental — API may still evolve before 1.0.
+// The shapes below back the `explore.*` and `profile.*` methods.
+// Timestamps are epoch milliseconds as `number` (field suffix `At`): the
+// payloads originate as integers and cross JSON, so no `Date` is used here.
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * A lightweight reference to a maker (creator), as embedded in app/comment
  * rows. The full card is {@link MakerSummary}.
@@ -153,8 +136,7 @@ export interface MakerRef {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * One app as it appears in discovery lists, search results, and related/
  * trending rails. Keyed by the canonical `projectId`. `favoritedByViewer` is
@@ -181,8 +163,7 @@ export interface AppSummary {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * The full app detail returned by `explore.getApp`: an {@link AppSummary} plus
  * the maker's note and the remix lineage count.
@@ -193,8 +174,7 @@ export type AppDetail = AppSummary & {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * A maker (creator) card as returned by `explore.search` and the maker-profile
  * header. `followedByViewer` is present only with an attached session.
@@ -213,8 +193,7 @@ export interface MakerSummary {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * The single editorial spotlight slot returned by `explore.spotlight`
  * (ops-seeded CMS-lite).
@@ -227,8 +206,7 @@ export interface SpotlightItem {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * One editorial collection as returned by `explore.collections` (ops-seeded
  * CMS-lite).
@@ -242,8 +220,7 @@ export interface CollectionInfo {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * A tag with its app count, as returned by `explore.tags`.
  */
@@ -253,8 +230,7 @@ export interface TagCount {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * One comment (or reply) on an app. The base shape used both for top-level
  * comments (see {@link CommentNode}) and for their replies. `createdAt` is
@@ -268,8 +244,7 @@ export interface CommentReply {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * A top-level comment with its (single-level) replies. Nesting is exactly one
  * level deep — replies have no further `replies` — and this is server-enforced.
@@ -279,8 +254,7 @@ export type CommentNode = CommentReply & {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * One favorite/follow edge as returned by `profile.myFavorites`. The single
  * edge table models both favorites (`targetKind: 'app'`) and follows
@@ -294,8 +268,7 @@ export interface FavoriteEdge {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * The viewer's notification toggles, read/written by
  * `profile.getNotificationPrefs` / `profile.setNotificationPrefs`.
@@ -308,8 +281,7 @@ export interface NotificationPrefs {
 }
 
 /**
- * @experimental Served by hosts running mythwork#296+ (API surface may
- * still evolve before 1.0).
+ * @experimental — API may still evolve before 1.0.
  *
  * Sort order for `explore.listApps`. `'popular'` ranks by launches,
  * `'new'` by `publishedAt`, `'trending'` by the 7d-vs-prev-7d trend.

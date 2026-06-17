@@ -85,11 +85,10 @@ const { canonical, alias } = await sdk.project.publish({ pid, shortName: 'my-dem
 console.log('published at', canonical)
 ```
 
-### Explore (served by mythwork#296+)
+### Explore
 
-> `@experimental`: the `sdk.explore` namespace is **served by hosts running
-> mythwork#296 or later** (the host bridges merged in that PR). The API surface
-> may still evolve before 1.0. Against an older host, these calls reject.
+> `@experimental`: the `sdk.explore` namespace methods are `@experimental` —
+> the API surface may still evolve before 1.0.
 
 ```ts
 // Browse apps (public; sort defaults host-side)
@@ -257,18 +256,16 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.secrets` | `secrets.check`, `secrets.proxyFetch` |
 | `sdk.config` | `config.get` |
 | `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite` |
-| `sdk.profile` (**served by #296+**) | `profile.me` (staging), `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs` — `@experimental` |
-| `sdk.explore` (**served by #296+**) | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.comments`, `explore.addComment` — `@experimental` |
+| `sdk.profile` (additional methods) | `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs` — `@experimental` |
+| `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.comments`, `explore.addComment` — `@experimental` |
 | `sdk.project` (**draft**) | `project.remix` (as `sdk.project.remix`) — `@experimental`, **not yet served** |
 
-**Served by mythwork#296+:** the `sdk.explore` namespace (14 methods) and the
-`sdk.profile.*` additions (4 methods) are `@experimental` but **served by hosts
-running mythwork#296 or later** — the host bridges shipped in that PR. The lone
-exception is **`sdk.project.remix`**, which still has **no bridge** and is **not
-yet served** (calling it against any current host rejects). All of these stay
+The `sdk.explore` namespace (14 methods) and the `sdk.profile.*` additions are
 `@experimental` — present so apps can compile today, and the surface may still
-evolve before 1.0. See "Explore surface" in `@mythwork/protocol`'s README for
-the full method/type tables.
+evolve before 1.0. The lone exception is **`sdk.project.remix`**, which still
+has **no bridge** and is **not yet served** (calling it against any current host
+rejects). See "Explore surface" in `@mythwork/protocol`'s README for the full
+method/type tables.
 
 Note: `project.getName` (singular) exists in `@mythwork/protocol`'s `MethodMap`
 but is not exposed as a helper — use `sdk.project.getNames` (the batch variant)

@@ -634,3 +634,91 @@ describe('state isolation between dev hosts', () => {
     b.port.close()
   })
 })
+
+describe('explore.updateAppMeta (owner app-meta override)', () => {
+  let sdk: MythworkClient
+  // SEED_MAKERS[0] ('devuser', the dev signed-in user) owns this app; another
+  // maker owns the other.
+  const ownApp = SEED_APPS.find(a => a.maker.handle === SEED_MAKERS[0]!.handle)!
+  const otherApp = SEED_APPS.find(a => a.maker.handle !== SEED_MAKERS[0]!.handle)!
+
+  beforeEach(() => {
+    sdk = makeClient()
+  })
+  afterEach(() => {
+    sdk.port.close()
+  })
+
+  it('signed-out returns { ok:false, reason:"sign_in_required" } (no throw)', async () => {
+    const result = await sdk.explore.updateAppMeta({ projectId: ownApp.projectId, name: 'X' })
+    expect(result).toEqual({ ok: false, reason: 'sign_in_required' })
+  })
+
+  it('owner edit returns the updated AppDetail and getApp reads it back', async () => {
+    await sdk.auth.signIn()
+    const updated = await sdk.explore.updateAppMeta({
+      projectId: ownApp.projectId,
+      name: 'Renamed App',
+      tagline: 'A fresh tagline',
+      note: 'why I built it',
+    })
+    expect(updated).toMatchObject({
+      projectId: ownApp.projectId,
+      name: 'Renamed App',
+      tagline: 'A fresh tagline',
+      makersNote: 'why I built it',
+    })
+    // Read-after-write: the override layers over the seed on the detail read.
+    const detail = await sdk.explore.getApp({ projectId: ownApp.projectId })
+    expect(detail).toMatchObject({
+      name: 'Renamed App',
+      tagline: 'A fresh tagline',
+      makersNote: 'why I built it',
+    })
+  })
+
+  it('a partial update preserves previously-set fields', async () => {
+    await sdk.auth.signIn()
+    await sdk.explore.updateAppMeta({
+      projectId: ownApp.projectId,
+      name: 'First',
+      tagline: 'Keep me',
+    })
+    await sdk.explore.updateAppMeta({ projectId: ownApp.projectId, name: 'Second' })
+    const detail = await sdk.explore.getApp({ projectId: ownApp.projectId })
+    expect(detail).toMatchObject({ name: 'Second', tagline: 'Keep me' })
+  })
+
+  it('a non-owner edit returns { ok:false, reason:"forbidden" }', async () => {
+    await sdk.auth.signIn()
+    const result = await sdk.explore.updateAppMeta({ projectId: otherApp.projectId, name: 'X' })
+    expect(result).toEqual({ ok: false, reason: 'forbidden' })
+  })
+
+  it('an unknown app returns { ok:false, reason:"not_found" }', async () => {
+    await sdk.auth.signIn()
+    const result = await sdk.explore.updateAppMeta({ projectId: 'no-such-app', name: 'X' })
+    expect(result).toEqual({ ok: false, reason: 'not_found' })
+  })
+})
+
+describe('explore.updateAppMeta — override reflects across all reads (no card↔detail divergence)', () => {
+  it("an owner's rename shows in cards/lists/search, not only on the detail page", async () => {
+    const sdk = makeClient()
+    await sdk.auth.signIn()
+    const ownApp = SEED_APPS.find(a => a.maker.handle === SEED_MAKERS[0]!.handle)!
+    await sdk.explore.updateAppMeta({ projectId: ownApp.projectId, name: 'Edited Name' })
+
+    // detail
+    const detail = await sdk.explore.getApp({ projectId: ownApp.projectId })
+    expect(detail.name).toBe('Edited Name')
+    // listApps card
+    const { items } = await sdk.explore.listApps()
+    expect(items.find(a => a.projectId === ownApp.projectId)?.name).toBe('Edited Name')
+    // search finds the edited name (override applied before scoring)
+    const { apps } = await sdk.explore.search({ q: 'Edited' })
+    expect(apps.find(a => a.projectId === ownApp.projectId)?.name).toBe('Edited Name')
+
+    sdk.port.close()
+  })
+})

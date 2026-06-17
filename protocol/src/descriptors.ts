@@ -1,33 +1,59 @@
-// AGE-69 method descriptors: the single declaration that interpreters walk.
+// Method descriptors: the single declaration that interpreters walk.
 //
-// Spec: docs/superpowers/specs/2026-06-12-age-69-method-descriptors.md.
-// One entry per API-BACKED wire method declaring its transport behavior — the
+// One entry per API-backed wire method declaring its transport behavior — the
 // facts the MethodMap's types cannot express and that every layer previously
 // re-stated by hand (HTTP binding, auth posture, pagination). Interpreters:
 // the host-iframe bridge (generic dispatch), the api worker route registry,
-// and the descriptor-walking conformance harness (all myth-backend-api's
-// half of the charter).
+// and the descriptor-walking conformance harness.
 //
 // Host-local methods (fs.*, project.*, collab.*, kernel.*, db.*, ydocs.*,
-// config.get) have no HTTP binding and never appear here. The deployed
-// explore + /me-era profile methods are declared below; the bridge/route
-// interpreters that walk this table are myth-backend-api's half (in progress).
+// config.get) have no HTTP binding and never appear here. The explore and
+// profile namespaces are fully declared below.
 
 import type { MethodMap } from './methods'
 
 /**
- * @experimental How a method treats the viewer's session at the bridge.
+ * @experimental What a method does when there is NO session token — the
+ * bridge's no-token gate. The conformance harness derives the signed-out case
+ * from it.
  *
- * - `anon` — never sends a Bearer.
- * - `optional-bearer` — attach the token if present; a stale 401 THROWS
- *   (no silent anonymous downgrade).
- * - `gated-result` — no token → `{ ok: false, reason: 'sign_in_required' }`
- *   returned as a RESULT with ZERO network; api 4xx maps to
- *   `{ ok: false, reason }`.
- * - `gated-throw` — no token → throw `'sign in required'`; non-2xx throws
- *   (the deployed legacy `profile.*` posture).
+ * - `anon` — never send a Bearer (a pure public read).
+ * - `optional` — attach the token if present; a stale 401 propagates (THROWS),
+ *   never a silent anonymous downgrade.
+ * - `throw` — no token → throw `'sign in required'` with ZERO network.
+ * - `result` — no token → `{ ok: false, reason: 'sign_in_required' }` as a
+ *   RESULT with ZERO network.
  */
-export type AuthPosture = 'anon' | 'optional-bearer' | 'gated-result' | 'gated-throw'
+export type SignedOutPosture = 'anon' | 'optional' | 'throw' | 'result'
+
+/**
+ * @experimental What a method does on a non-2xx api response.
+ *
+ * - `throw` — a non-2xx throws `'<method> failed: <status>'`.
+ * - `result` — a 4xx maps to `{ ok: false, reason }` (a renderable affordance,
+ *   e.g. `handle_taken` / `no_profile`); a 5xx still throws (transient).
+ */
+export type ErrorPosture = 'throw' | 'result'
+
+/**
+ * @experimental How a method treats the viewer's session at the bridge — two
+ * INDEPENDENT axes. The two-axis model is necessary because some methods cannot
+ * be expressed by a single flat value: `profile.update` is
+ * `signedOut: 'throw'` × `onError: 'result'` (throw with no token, but map a
+ * validation 4xx to a reason). The axes are the real degrees of freedom, and
+ * the harness derives a per-axis matrix (no-token case from `signedOut`, 4xx
+ * case from `onError`).
+ *
+ * Common combinations:
+ *   pure public read  → { signedOut: 'anon',     onError: 'throw'  }
+ *   enriched read     → { signedOut: 'optional', onError: 'throw'  }
+ *   hard gated        → { signedOut: 'throw',    onError: 'throw'  }
+ *   gated with reason → { signedOut: 'result',   onError: 'result' }
+ */
+export interface AuthPosture {
+  signedOut: SignedOutPosture
+  onError: ErrorPosture
+}
 
 /**
  * @experimental Transport declaration for one API-backed wire method.
@@ -49,119 +75,115 @@ export interface MethodDescriptor {
 }
 
 /**
- * @experimental The descriptor table (AGE-69). Covers the explore namespace
- * (all 14 methods) and the /me-era profile methods, grounded against the
- * deployed host-iframe bridges (`bridges/explore.ts`, `bridges/profile.ts`) +
- * the api-worker routes — zero bridge↔route drift at authoring time.
- *
- * `profile.update` is intentionally ABSENT: its posture is a hybrid the
- * 4-value {@link AuthPosture} can't express (no-token THROWS, but a 400/403/404
- * maps to `{ ok:false, reason }`), so it keeps its hand-written bridge until
- * the posture model is resolved — see the note at the end of the table.
- *
- * The legacy `profile.*` methods (get/discover/claimHandle/setContentProject/
- * setFavorite) also stay hand-written (`gated-throw`) until someone needs to
- * touch them; host-local namespaces never appear here.
+ * @experimental The descriptor table. Covers the explore namespace (all 14
+ * methods) and the profile namespace methods. Host-local namespaces never
+ * appear here.
  */
 export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescriptor>> = {
-  // ── explore.* (the mythwork#296 bridge) ──────────────────────────────────
+  // ── explore.* ────────────────────────────────────────────────────────────
   // Reads are public/anonymous-OK but enrich rows when a session is attached,
   // and a stale-token 401 propagates (no silent anonymous downgrade) →
-  // `optional-bearer`. listApps + comments page via { cursor? } → { nextCursor? }.
-  // The engagement writes (rate/clearRating/addComment) and the one viewer read
-  // (myRatings) short-circuit to { ok:false, reason } with ZERO network when
-  // signed out → `gated-result`.
+  // signedOut: 'optional', onError: 'throw'. listApps + comments page via
+  // { cursor? } → { nextCursor? }. The engagement writes (rate/clearRating/
+  // addComment) and the one viewer read (myRatings) short-circuit to
+  // { ok:false, reason } with ZERO network when signed out and map a 4xx to a
+  // reason → signedOut: 'result', onError: 'result'.
   'explore.listApps': {
     http: { verb: 'GET', path: '/explore/apps' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
     paginated: true,
   },
   'explore.getApp': {
     http: { verb: 'GET', path: '/explore/apps/:projectId' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
   },
   'explore.relatedApps': {
     http: { verb: 'GET', path: '/explore/apps/:projectId/related' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
   },
   'explore.trendingApps': {
     http: { verb: 'GET', path: '/explore/trending' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
   },
   'explore.tags': {
     http: { verb: 'GET', path: '/explore/tags' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
   },
   'explore.search': {
     http: { verb: 'GET', path: '/explore/search' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
   },
   'explore.popularSearches': {
     http: { verb: 'GET', path: '/explore/popular-searches' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
   },
   'explore.spotlight': {
     http: { verb: 'GET', path: '/explore/spotlight' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
   },
   'explore.collections': {
     http: { verb: 'GET', path: '/explore/collections' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
   },
   'explore.comments': {
     http: { verb: 'GET', path: '/explore/comments' },
-    auth: 'optional-bearer',
+    auth: { signedOut: 'optional', onError: 'throw' },
     paginated: true,
   },
   'explore.myRatings': {
     http: { verb: 'GET', path: '/explore/my-ratings' },
-    auth: 'gated-result',
+    auth: { signedOut: 'result', onError: 'result' },
   },
   'explore.rate': {
     http: { verb: 'POST', path: '/explore/rate' },
-    auth: 'gated-result',
+    auth: { signedOut: 'result', onError: 'result' },
   },
   'explore.clearRating': {
     http: { verb: 'DELETE', path: '/explore/rate' },
-    auth: 'gated-result',
+    auth: { signedOut: 'result', onError: 'result' },
   },
   'explore.addComment': {
     http: { verb: 'POST', path: '/explore/comments' },
-    auth: 'gated-result',
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  // Owner-update of app metadata — a save button, so gated-result on BOTH axes
+  // (a 403 not-owner / 404 surfaces as { ok:false, reason }, never a throw).
+  // PATCH REST-pairs with GET /explore/apps/:projectId.
+  'explore.updateAppMeta': {
+    http: { verb: 'PATCH', path: '/explore/apps/:projectId' },
+    auth: { signedOut: 'result', onError: 'result' },
   },
 
-  // ── profile.* (the /me-era additions; mythwork#296/#311) ──────────────────
-  // submitClaim + me use `gated-result` (no-token → { ok:false } with ZERO
-  // network; a stale 401 + a 4xx map to { ok:false, reason }; 5xx throws).
+  // ── profile.* ────────────────────────────────────────────────────────────
+  // submitClaim + me: no-token → { ok:false } ZERO network, a stale 401 + a 4xx
+  // map to { ok:false, reason } → signedOut: 'result', onError: 'result'.
   // myFavorites + the notification-prefs pair THROW on no-token AND on any
-  // non-2xx → `gated-throw`.
+  // non-2xx → signedOut: 'throw', onError: 'throw'. profile.update is the
+  // canonical two-axis hybrid: it THROWS with no token but maps a 400/403/404
+  // to { ok:false, reason } (so a settings screen renders the reason) →
+  // signedOut: 'throw', onError: 'result'.
   'profile.submitClaim': {
     http: { verb: 'POST', path: '/claim' },
-    auth: 'gated-result',
+    auth: { signedOut: 'result', onError: 'result' },
   },
   'profile.me': {
     http: { verb: 'GET', path: '/profile/me' },
-    auth: 'gated-result',
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  'profile.update': {
+    http: { verb: 'PATCH', path: '/profile/me' },
+    auth: { signedOut: 'throw', onError: 'result' },
   },
   'profile.myFavorites': {
     http: { verb: 'GET', path: '/profile/me/favorites' },
-    auth: 'gated-throw',
+    auth: { signedOut: 'throw', onError: 'throw' },
   },
   'profile.getNotificationPrefs': {
     http: { verb: 'GET', path: '/profile/me/notification-prefs' },
-    auth: 'gated-throw',
+    auth: { signedOut: 'throw', onError: 'throw' },
   },
   'profile.setNotificationPrefs': {
     http: { verb: 'PUT', path: '/profile/me/notification-prefs' },
-    auth: 'gated-throw',
+    auth: { signedOut: 'throw', onError: 'throw' },
   },
-
-  // profile.update is DEFERRED: it's a HYBRID the 4-value AuthPosture can't
-  // express — no-token THROWS (like gated-throw) but a 400/403/404 maps to
-  // { ok:false, reason } (like gated-result), per bridges/profile.ts. Encoding
-  // it as either value would make the descriptor-walking conformance harness
-  // assert the wrong 4xx behavior. Resolve the model with myth-backend-api
-  // (interpreter owner) before adding it — likely a 5th posture, or splitting
-  // `auth` into independent (no-token, error-map) axes. Until then profile.update
-  // keeps its hand-written bridge.
 }

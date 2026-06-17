@@ -1,7 +1,7 @@
 // The typed client: a thin, mechanical surface over a live MessagePort. One
 // generic `request<M>()` against the protocol's MethodMap, one `subscribe<E>()`
 // against its EventMap, and namespaced helpers that map clean names to the
-// deployed (sometimes legacy) wire method strings per the design-doc table.
+// deployed (sometimes legacy) wire method strings.
 //
 // Helpers are intentionally dumb: each one forwards its params straight to
 // `request()` with the wire method string. No validation, no transformation —
@@ -311,148 +311,158 @@ export class MythworkClient {
     setFavorite: (params: MethodParams<'profile.setFavorite'>, opts?: RequestOptions) =>
       this.request('profile.setFavorite', params, opts),
     /**
-     * @experimental Served on staging (mythwork#311); prod rollout
-     * pending. The signed-in viewer's OWN
-     * profile resolved server-side from the session (no handle derivation).
+     * @experimental — API may still evolve before 1.0. The signed-in viewer's
+     * OWN profile resolved server-side from the session (no handle derivation).
      * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }` with
      * zero network; unclaimed resolves `{ ok: false, reason: 'no_profile' }`.
      * Discriminate on `'reason' in result`. Wire: `profile.me`.
      */
     me: (opts?: RequestOptions) => this.request('profile.me', {}, opts),
     /**
-     * @experimental Served by hosts running mythwork#296+ (API surface may
-     * still evolve before 1.0). The viewer's favorites/follows, optionally filtered
-     * by `targetKind`. Signed-in. Wire: `profile.myFavorites`.
+     * @experimental — API may still evolve before 1.0. The viewer's
+     * favorites/follows, optionally filtered by `targetKind`. Signed-in.
+     * Wire: `profile.myFavorites`.
      */
     myFavorites: (params: MethodParams<'profile.myFavorites'> = {}, opts?: RequestOptions) =>
       this.request('profile.myFavorites', params, opts),
     /**
-     * @experimental Served by hosts running mythwork#296+ (API surface may
-     * still evolve before 1.0). Update the viewer's structured profile fields
-     * (server owns link normalization). Signed-in. Wire: `profile.update`.
+     * @experimental — API may still evolve before 1.0. Update the viewer's
+     * structured profile fields (server owns link normalization). Signed-in.
+     * Wire: `profile.update`.
      */
     update: (params: MethodParams<'profile.update'>, opts?: RequestOptions) =>
       this.request('profile.update', params, opts),
     /**
-     * @experimental Served by hosts running mythwork#296+ (API surface may
-     * still evolve before 1.0). Read the viewer's notification preferences.
-     * Signed-in. Wire: `profile.getNotificationPrefs`.
+     * @experimental — API may still evolve before 1.0. Read the viewer's
+     * notification preferences. Signed-in.
+     * Wire: `profile.getNotificationPrefs`.
      */
     getNotificationPrefs: (
       params: MethodParams<'profile.getNotificationPrefs'> = {},
       opts?: RequestOptions,
     ) => this.request('profile.getNotificationPrefs', params, opts),
     /**
-     * @experimental Served by hosts running mythwork#296+ (API surface may
-     * still evolve before 1.0). Update some notification preferences; returns the
-     * full updated prefs. Signed-in. Wire: `profile.setNotificationPrefs`.
+     * @experimental — API may still evolve before 1.0. Update some notification
+     * preferences; returns the full updated prefs. Signed-in.
+     * Wire: `profile.setNotificationPrefs`.
      */
     setNotificationPrefs: (
       params: MethodParams<'profile.setNotificationPrefs'>,
       opts?: RequestOptions,
     ) => this.request('profile.setNotificationPrefs', params, opts),
     /**
-     * @experimental Served by hosts running mythwork#299+#301+. Submit the
-     * full authed claim (lead fields + the real platform handle + opaque
-     * `survey` blob). Signed-out resolves
-     * `{ ok: false, reason: 'sign_in_required' }` with zero network — render
-     * the not-saved state, run `auth.signIn()`, and retry once.
+     * @experimental — API may still evolve before 1.0. Submit the full authed
+     * claim (lead fields + the real platform handle + opaque `survey` blob).
+     * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }` with zero
+     * network — render the not-saved state, run `auth.signIn()`, and retry once.
      * Wire: `profile.submitClaim`.
      */
     submitClaim: (params: MethodParams<'profile.submitClaim'>, opts?: RequestOptions) =>
       this.request('profile.submitClaim', params, opts),
   }
 
-  // ── explore.* (draft — explore backend, no bridge yet) ────────────────────
+  // ── explore.* ────────────────────────────────────────────────────────────
   /**
-   * @experimental Served by hosts running mythwork#296+ (API surface may still
-   * evolve before 1.0). Discovery and engagement reads/writes. Maps to
-   * `explore.*`. Reads are public/anonymous-OK; rate, clearRating, myRatings,
-   * and addComment are sign-in gated host-side. Discovery operates on canonical
-   * project ids (param `projectId`).
+   * @experimental — API may still evolve before 1.0. Discovery and engagement
+   * reads/writes. Maps to `explore.*`. Reads are public/anonymous-OK; rate,
+   * clearRating, myRatings, and addComment are sign-in gated host-side.
+   * Discovery operates on canonical project ids (param `projectId`).
    */
   readonly explore = {
     /**
-     * @experimental Served (mythwork#296+). List apps for discovery, filtered/sorted/paginated.
-     * Wire: `explore.listApps`.
+     * @experimental — API may still evolve before 1.0. List apps for discovery,
+     * filtered/sorted/paginated. Wire: `explore.listApps`.
      */
     listApps: (params: MethodParams<'explore.listApps'> = {}, opts?: RequestOptions) =>
       this.request('explore.listApps', params, opts),
     /**
-     * @experimental Served (mythwork#296+). Read one app's full detail by `projectId`.
-     * Wire: `explore.getApp`.
+     * @experimental — API may still evolve before 1.0. Read one app's full
+     * detail by `projectId`. Wire: `explore.getApp`.
      */
     getApp: (params: MethodParams<'explore.getApp'>, opts?: RequestOptions) =>
       this.request('explore.getApp', params, opts),
     /**
-     * @experimental Served (mythwork#296+). Apps related to the given `projectId`.
-     * Wire: `explore.relatedApps`.
+     * @experimental — API may still evolve before 1.0. Apps related to the
+     * given `projectId`. Wire: `explore.relatedApps`.
      */
     relatedApps: (params: MethodParams<'explore.relatedApps'>, opts?: RequestOptions) =>
       this.request('explore.relatedApps', params, opts),
     /**
-     * @experimental Served (mythwork#296+). The trending rail. Wire: `explore.trendingApps`.
+     * @experimental — API may still evolve before 1.0. The trending rail.
+     * Wire: `explore.trendingApps`.
      */
     trendingApps: (params: MethodParams<'explore.trendingApps'> = {}, opts?: RequestOptions) =>
       this.request('explore.trendingApps', params, opts),
     /**
-     * @experimental Served (mythwork#296+). Every tag with its app count. Wire: `explore.tags`.
+     * @experimental — API may still evolve before 1.0. Every tag with its app
+     * count. Wire: `explore.tags`.
      */
     tags: (params: MethodParams<'explore.tags'> = {}, opts?: RequestOptions) =>
       this.request('explore.tags', params, opts),
     /**
-     * @experimental Served (mythwork#296+). Search apps and makers by `q` (supports `@handle` /
-     * `#tag`). Wire: `explore.search`.
+     * @experimental — API may still evolve before 1.0. Search apps and makers
+     * by `q` (supports `@handle` / `#tag`). Wire: `explore.search`.
      */
     search: (params: MethodParams<'explore.search'>, opts?: RequestOptions) =>
       this.request('explore.search', params, opts),
     /**
-     * @experimental Served (mythwork#296+). The seeded popular search terms.
-     * Wire: `explore.popularSearches`.
+     * @experimental — API may still evolve before 1.0. The seeded popular
+     * search terms. Wire: `explore.popularSearches`.
      */
     popularSearches: (
       params: MethodParams<'explore.popularSearches'> = {},
       opts?: RequestOptions,
     ) => this.request('explore.popularSearches', params, opts),
     /**
-     * @experimental Served (mythwork#296+). The editorial spotlight slot. Wire: `explore.spotlight`.
+     * @experimental — API may still evolve before 1.0. The editorial spotlight
+     * slot. Wire: `explore.spotlight`.
      */
     spotlight: (params: MethodParams<'explore.spotlight'> = {}, opts?: RequestOptions) =>
       this.request('explore.spotlight', params, opts),
     /**
-     * @experimental Served (mythwork#296+). The editorial collections list.
-     * Wire: `explore.collections`.
+     * @experimental — API may still evolve before 1.0. The editorial
+     * collections list. Wire: `explore.collections`.
      */
     collections: (params: MethodParams<'explore.collections'> = {}, opts?: RequestOptions) =>
       this.request('explore.collections', params, opts),
     /**
-     * @experimental Served (mythwork#296+). Rate an app 1–5 stars. Signed-in. Wire: `explore.rate`.
+     * @experimental — API may still evolve before 1.0. Rate an app 1–5 stars.
+     * Signed-in. Wire: `explore.rate`.
      */
     rate: (params: MethodParams<'explore.rate'>, opts?: RequestOptions) =>
       this.request('explore.rate', params, opts),
     /**
-     * @experimental Served (mythwork#296+). Clear the viewer's rating on an app. Signed-in.
-     * Wire: `explore.clearRating`.
+     * @experimental — API may still evolve before 1.0. Clear the viewer's
+     * rating on an app. Signed-in. Wire: `explore.clearRating`.
      */
     clearRating: (params: MethodParams<'explore.clearRating'>, opts?: RequestOptions) =>
       this.request('explore.clearRating', params, opts),
     /**
-     * @experimental Served (mythwork#296+). The viewer's ratings (projectId → stars). Signed-in.
-     * Wire: `explore.myRatings`.
+     * @experimental — API may still evolve before 1.0. The viewer's ratings
+     * (projectId → stars). Signed-in. Wire: `explore.myRatings`.
      */
     myRatings: (params: MethodParams<'explore.myRatings'> = {}, opts?: RequestOptions) =>
       this.request('explore.myRatings', params, opts),
     /**
-     * @experimental Served (mythwork#296+). An app's comments, newest first, paginated.
-     * Wire: `explore.comments`.
+     * @experimental — API may still evolve before 1.0. An app's comments,
+     * newest first, paginated. Wire: `explore.comments`.
      */
     comments: (params: MethodParams<'explore.comments'>, opts?: RequestOptions) =>
       this.request('explore.comments', params, opts),
     /**
-     * @experimental Served (mythwork#296+). Add a comment or reply (`parentCommentId`).
-     * Signed-in. Wire: `explore.addComment`.
+     * @experimental — API may still evolve before 1.0. Add a comment or reply
+     * (`parentCommentId`). Signed-in. Wire: `explore.addComment`.
      */
     addComment: (params: MethodParams<'explore.addComment'>, opts?: RequestOptions) =>
       this.request('explore.addComment', params, opts),
+    /**
+     * @experimental Draft — not yet served. Owner-update an app's editable
+     * metadata (`name`/`tagline`/`note`); the override layers over the
+     * publish-derived fields and survives republish. Owner-gated; signed-out
+     * resolves `{ ok: false, reason: 'sign_in_required' }`.
+     * Wire: `explore.updateAppMeta`.
+     */
+    updateAppMeta: (params: MethodParams<'explore.updateAppMeta'>, opts?: RequestOptions) =>
+      this.request('explore.updateAppMeta', params, opts),
   }
 }

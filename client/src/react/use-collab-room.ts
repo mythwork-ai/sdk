@@ -8,7 +8,12 @@
 // to the code orbit-collab already runs in production.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Awareness } from 'y-protocols/awareness'
+import {
+  applyAwarenessUpdate,
+  Awareness,
+  encodeAwarenessUpdate,
+  removeAwarenessStates,
+} from 'y-protocols/awareness'
 import { WebsocketProvider } from 'y-websocket'
 import * as Y from 'yjs'
 import type { MythworkClient } from '../client'
@@ -151,27 +156,63 @@ export function _resetCollabForTests(): void {
 // hooks; it stays out of prod bundles unless imported.
 
 const DEV_RELAY_ORIGIN = Symbol('mythwork-dev-relay')
-const devRelayRooms = new Map<string, Set<Y.Doc>>()
 
-/** A {@link ProviderFactory} that bridges all docs sharing a roomId in memory. */
+interface DevRelayRoom {
+  docs: Set<Y.Doc>
+  awarenesses: Set<Awareness>
+}
+const devRelayRooms = new Map<string, DevRelayRoom>()
+
+/**
+ * A {@link ProviderFactory} that bridges everything sharing a roomId in memory —
+ * BOTH the Y.Doc data plane AND Awareness presence — so two `connect({ dev:true })`
+ * peers behave like they're on one real WebSocket room. Awareness matters as much
+ * as doc data: editor apps derive "who else is here" (collaborator lists,
+ * has-opponent gating, lobby discovery) from awareness, which y-websocket syncs in
+ * production and this relay must mirror.
+ */
 export const devCollabRelayFactory: ProviderFactory = (_serverUrl, roomId, doc, opts) => {
-  let peers = devRelayRooms.get(roomId)
-  if (!peers) {
-    peers = new Set()
-    devRelayRooms.set(roomId, peers)
+  let room = devRelayRooms.get(roomId)
+  if (!room) {
+    room = { docs: new Set(), awarenesses: new Set() }
+    devRelayRooms.set(roomId, room)
   }
-  const room = peers
-  // Sync existing room state into the newcomer and vice versa.
-  for (const peer of room) {
+  const { docs, awarenesses } = room
+  const awareness = opts.awareness
+
+  // Sync existing doc + awareness state into the newcomer and vice versa.
+  for (const peer of docs) {
     Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer))
     Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc))
   }
-  room.add(doc)
+  for (const peerAw of awarenesses) {
+    const clients = [...peerAw.getStates().keys()]
+    if (clients.length > 0) {
+      applyAwarenessUpdate(awareness, encodeAwarenessUpdate(peerAw, clients), DEV_RELAY_ORIGIN)
+    }
+  }
+  docs.add(doc)
+  awarenesses.add(awareness)
+
   const onUpdate = (update: Uint8Array, origin: unknown): void => {
     if (origin === DEV_RELAY_ORIGIN) return
-    for (const peer of room) if (peer !== doc) Y.applyUpdate(peer, update, DEV_RELAY_ORIGIN)
+    for (const peer of docs) if (peer !== doc) Y.applyUpdate(peer, update, DEV_RELAY_ORIGIN)
   }
   doc.on('update', onUpdate)
+
+  const onAwareness = (
+    { added, updated, removed }: { added: number[]; updated: number[]; removed: number[] },
+    origin: unknown,
+  ): void => {
+    if (origin === DEV_RELAY_ORIGIN) return
+    const changed = [...added, ...updated, ...removed]
+    if (changed.length === 0) return
+    const update = encodeAwarenessUpdate(awareness, changed)
+    for (const peerAw of awarenesses) {
+      if (peerAw !== awareness) applyAwarenessUpdate(peerAw, update, DEV_RELAY_ORIGIN)
+    }
+  }
+  awareness.on('update', onAwareness)
 
   const statusCbs = new Set<(e: { status: CollabConnectionStatus }) => void>()
   const syncCbs = new Set<(s: boolean) => void>()
@@ -181,7 +222,7 @@ export const devCollabRelayFactory: ProviderFactory = (_serverUrl, roomId, doc, 
     for (const cb of syncCbs) cb(true)
   })
   return {
-    awareness: opts.awareness,
+    awareness,
     on(ev: string, cb: (...a: never[]) => void) {
       if (ev === 'status') statusCbs.add(cb as (e: { status: CollabConnectionStatus }) => void)
       if (ev === 'sync') syncCbs.add(cb as (s: boolean) => void)
@@ -192,7 +233,18 @@ export const devCollabRelayFactory: ProviderFactory = (_serverUrl, roomId, doc, 
     disconnect() {},
     destroy() {
       doc.off('update', onUpdate)
-      room.delete(doc)
+      awareness.off('update', onAwareness)
+      docs.delete(doc)
+      awarenesses.delete(awareness)
+      // Tell remaining peers this client's presence is gone (tab-close semantics).
+      removeAwarenessStates(awareness, [awareness.clientID], DEV_RELAY_ORIGIN)
+      for (const peerAw of awarenesses) {
+        applyAwarenessUpdate(
+          peerAw,
+          encodeAwarenessUpdate(awareness, [awareness.clientID]),
+          DEV_RELAY_ORIGIN,
+        )
+      }
     },
   } as unknown as WebsocketProvider
 }

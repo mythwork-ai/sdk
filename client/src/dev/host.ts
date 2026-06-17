@@ -10,6 +10,10 @@
 //   - explore writes (rate, clearRating, addComment) AND explore.myRatings:
 //     gated-RESULT — signed-out returns { ok: false, reason: 'sign_in_required' }
 //     as the result value, never throws.
+//   - explore.updateAppMeta: gated-RESULT + owner-gated — signed-out → result
+//     'sign_in_required', non-owner → 'forbidden', unknown app → 'not_found';
+//     on success the owner override is layered over the seed (so a later
+//     explore.getApp reads it back) → updated AppDetail.
 //   - profile.* mutations (setFavorite, myFavorites, update): signed-out THROWS
 //     (the promise rejects), consistent with the deployed host bridge.
 //   - profile.me: gated-RESULT — signed-out → { ok:false, reason:'sign_in_required' };
@@ -20,6 +24,7 @@
 
 import type { PushMessage, RpcRequest, RpcResponse, User } from '@mythwork/protocol'
 import type {
+  AppDetail,
   AppSummary,
   CommentNode,
   CommentReply,
@@ -68,11 +73,17 @@ interface DevState {
    * screen reads exactly what it writes (the profile.me contract in methods.ts).
    */
   profileFields: { bio: string; location: string; link: string }
+  /**
+   * projectId → owner-set app-meta override (name/tagline/note), layered over
+   * the published seed on read — mirrors the server's app_meta override store,
+   * which wins over the publish-derived fields.
+   */
+  appMetaOverrides: Map<string, { name?: string; tagline?: string; note?: string }>
 }
 
-function freshState(): DevState {
+function freshState(user?: User): DevState {
   return {
-    user: { kind: 'anonymous', userId: 'anonymous' },
+    user: user ?? { kind: 'anonymous', userId: 'anonymous' },
     ratings: new Map(),
     favoriteApps: new Set(),
     favoriteCreators: new Set(),
@@ -80,7 +91,29 @@ function freshState(): DevState {
     notifPrefs: { ...DEFAULT_NOTIF_PREFS },
     commentSeq: 1,
     profileFields: { bio: '', location: '', link: '' },
+    appMetaOverrides: new Map(),
   }
+}
+
+type AppMetaOverride = { name?: string; tagline?: string; note?: string }
+
+// Layer an owner override's name/tagline over any app summary or detail —
+// mirrors the server's COALESCE(override, published) applied on EVERY read
+// (cards, lists, search, AND detail), so dev shows no card↔detail divergence.
+function applyAppMeta<T extends AppSummary>(app: T, ov: AppMetaOverride | undefined): T {
+  if (!ov) return app
+  return {
+    ...app,
+    ...(ov.name !== undefined ? { name: ov.name } : {}),
+    ...(ov.tagline !== undefined ? { tagline: ov.tagline } : {}),
+  }
+}
+
+// The full AppDetail for an app with its owner override applied: name/tagline
+// plus the maker's note (which only exists on the detail).
+function overriddenDetail(app: AppSummary, ov: AppMetaOverride | undefined): AppDetail {
+  const detail = applyAppMeta(appSummaryToDetail(app), ov)
+  return ov?.note !== undefined ? { ...detail, makersNote: ov.note } : detail
 }
 
 // Lazy-seed from SEED_COMMENTS on first access for either read or write;
@@ -165,9 +198,12 @@ function devSha(project: DevProject): string {
 // ── handler table ─────────────────────────────────────────────────────────────
 
 /** Per-request context: the calling client's host-side port, used to register
- * project subscribers and to exclude a writer from its own fs.changed pushes. */
+ * project subscribers and to exclude a writer from its own fs.changed pushes.
+ * `signInAs` lets an editor-app test seed the identity that `kernel.signIn`
+ * adopts (distinct per dev client), instead of the default seed maker. */
 interface HandlerCtx {
   hostPort: MessagePort
+  signInAs?: User
 }
 
 type Handler = (args: Record<string, unknown>, state: DevState, ctx: HandlerCtx) => unknown
@@ -175,7 +211,7 @@ type Handler = (args: Record<string, unknown>, state: DevState, ctx: HandlerCtx)
 const handlers: Record<string, Handler> = {
   // ── explore reads ──────────────────────────────────────────────────────────
 
-  'explore.listApps'(args) {
+  'explore.listApps'(args, state) {
     const tags = args['tags'] as string[] | undefined
     const sort = (args['sort'] as string | undefined) ?? 'popular'
     const maker = args['maker'] as string | undefined
@@ -194,24 +230,28 @@ const handlers: Record<string, Handler> = {
       // popular: by launches desc
       items.sort((a, b) => b.launches - a.launches)
     }
-    return { items }
+    return { items: items.map(a => applyAppMeta(a, state.appMetaOverrides.get(a.projectId))) }
   },
 
-  'explore.getApp'(args) {
+  'explore.getApp'(args, state) {
     const projectId = args['projectId'] as string
     const app = SEED_APPS.find(a => a.projectId === projectId)
     if (!app) throw new Error(`explore.getApp: app ${projectId} not found`)
-    return appSummaryToDetail(app)
+    return overriddenDetail(app, state.appMetaOverrides.get(projectId))
   },
 
-  'explore.relatedApps'(args) {
+  'explore.relatedApps'(args, state) {
     const projectId = args['projectId'] as string
-    const items = relatedApps(projectId)
+    const items = relatedApps(projectId).map(a =>
+      applyAppMeta(a, state.appMetaOverrides.get(a.projectId)),
+    )
     return { items }
   },
 
-  'explore.trendingApps'() {
-    return { items: SEED_TRENDING }
+  'explore.trendingApps'(_args, state) {
+    return {
+      items: SEED_TRENDING.map(a => applyAppMeta(a, state.appMetaOverrides.get(a.projectId))),
+    }
   },
 
   'explore.tags'() {
@@ -221,12 +261,17 @@ const handlers: Record<string, Handler> = {
     return { items }
   },
 
-  'explore.search'(args) {
+  'explore.search'(args, state) {
     const q = (args['q'] as string) ?? ''
-    const apps: AppSummary[] = SEED_APPS.flatMap(a => {
-      const s = appSearchScore(a, q)
-      return s !== null ? [{ score: s, app: a }] : []
-    })
+    // Apply the owner override BEFORE scoring so search finds the EDITED name
+    // (mirrors the server re-indexing apps_fts on the override).
+    const apps: AppSummary[] = SEED_APPS.map(a =>
+      applyAppMeta(a, state.appMetaOverrides.get(a.projectId)),
+    )
+      .flatMap(a => {
+        const s = appSearchScore(a, q)
+        return s !== null ? [{ score: s, app: a }] : []
+      })
       .sort((a, b) => b.score - a.score)
       .map(({ app }) => app)
 
@@ -308,6 +353,25 @@ const handlers: Record<string, Handler> = {
     const node: CommentNode = { id, author, body, createdAt, replies: [] }
     list.unshift(node)
     return node
+  },
+
+  'explore.updateAppMeta'(args, state) {
+    // gated-RESULT (it's a save button): signed-out resolves a result, no throw.
+    if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
+    const projectId = args['projectId'] as string
+    const app = SEED_APPS.find(a => a.projectId === projectId)
+    if (!app) return { ok: false, reason: 'not_found' }
+    // Owner-gated: only the app's maker can edit (mirrors the server's 403).
+    const user = state.user as { userId: string }
+    if (app.maker.handle !== user.userId) return { ok: false, reason: 'forbidden' }
+    // Merge the provided fields into the override (partial — preserves the
+    // rest) so a later explore.getApp reads exactly what was written.
+    const next = { ...(state.appMetaOverrides.get(projectId) ?? {}) }
+    if (args['name'] !== undefined) next.name = args['name'] as string
+    if (args['tagline'] !== undefined) next.tagline = args['tagline'] as string
+    if (args['note'] !== undefined) next.note = args['note'] as string
+    state.appMetaOverrides.set(projectId, next)
+    return overriddenDetail(app, next)
   },
 
   // ── profile reads ──────────────────────────────────────────────────────────
@@ -428,9 +492,15 @@ const handlers: Record<string, Handler> = {
     return state.user
   },
 
-  'kernel.signIn'(_args, state) {
-    // Sign in as the first seed maker ('devuser') so profile.me + profile.get
-    // are immediately resolvable on the happy path.
+  'kernel.signIn'(_args, state, ctx) {
+    // An editor-app test can pin the post-sign-in identity per dev client via
+    // `createDevHost({ signInAs })` so two players get distinct identities.
+    if (ctx.signInAs) {
+      state.user = ctx.signInAs
+      return state.user
+    }
+    // Default: sign in as the first seed maker ('devuser') so profile.me +
+    // profile.get are immediately resolvable on the happy path.
     const maker = SEED_MAKERS[0]!
     state.user = {
       kind: 'public',
@@ -458,7 +528,9 @@ const handlers: Record<string, Handler> = {
   // ── project (shared store) ───────────────────────────────────────────────────
 
   'project.create'(args, _state, ctx) {
-    const pid = `dev-p${pidSeq++}`
+    // 17-char lowercase-alphanumeric pid, mirroring real canonical/local ids
+    // (apps route on `/.../<id>` with an `[a-z0-9]{17}` shape).
+    const pid = `dev${String(pidSeq++).padStart(14, '0')}`
     const project = ensureProject(pid)
     project.name = (args['projectName'] as string | undefined) ?? pid
     project.leader = ctx.hostPort
@@ -590,14 +662,14 @@ const handlers: Record<string, Handler> = {
     const pid = args['pid'] as string
     const name = args['name'] as string
     const scope = (args['scope'] as string | undefined) ?? 'project'
-    // A dev room id is shared across clients opening the same (pid, name, scope);
-    // the dev collab relay (@mythwork/sdk/react devCollabRelayFactory) keys its
-    // in-memory Y bridge on this id so two connect({ dev: true }) peers converge.
-    return {
-      roomId: `dev:${pid}:${scope}:${name}`,
-      serverUrl: 'dev:relay',
-      joinToken: undefined,
-    } satisfies RoomDescriptor
+    // A dev room id is shared across clients opening the same room; the dev
+    // collab relay (@mythwork/sdk/react devCollabRelayFactory) keys its in-memory
+    // Y bridge on this id so two connect({ dev: true }) peers converge. An
+    // `app`-scoped room is app-wide and pid-INDEPENDENT (mirrors the real host):
+    // clients reach the same app room from any project context (e.g. tennis's
+    // lobby, opened both from the landing page and from inside a match).
+    const roomId = scope === 'app' ? `dev:app:${name}` : `dev:${pid}:project:${name}`
+    return { roomId, serverUrl: 'dev:relay', joinToken: undefined } satisfies RoomDescriptor
   },
 }
 
@@ -613,6 +685,10 @@ const handlers: Record<string, Handler> = {
  * Use directly for tests or advanced dev setups; prefer `connect({ dev: true })`
  * for the idiomatic API.
  *
+ * Pass `opts.user` to seed the signed-in identity (editor apps simulating
+ * distinct players give each dev client its own identity) and `opts.signInAs`
+ * to pin what `kernel.signIn` adopts instead of the default seed maker.
+ *
  * @example
  * ```ts
  * import { createDevHost } from '@mythwork/sdk/dev'
@@ -620,14 +696,18 @@ const handlers: Record<string, Handler> = {
  *
  * const client = new MythworkClient(createDevHost())
  * const { items } = await client.explore.listApps()
+ *
+ * // Editor app: two players with distinct identities.
+ * const a = new MythworkClient(createDevHost({ user: { kind: 'pseudonymous', userId: 'a', displayName: 'Ann' } }))
+ * const b = new MythworkClient(createDevHost({ user: { kind: 'pseudonymous', userId: 'b', displayName: 'Bob' } }))
  * ```
  */
-export function createDevHost(): MessagePort {
+export function createDevHost(opts?: { user?: User; signInAs?: User }): MessagePort {
   const chan = new MessageChannel()
   const hostPort = chan.port1 // host side — receives requests, sends replies
   const appPort = chan.port2 // given to MythworkClient
 
-  const state = freshState()
+  const state = freshState(opts?.user)
 
   hostPort.start()
   appPort.start()
@@ -643,7 +723,7 @@ export function createDevHost(): MessagePort {
       response = { id: req.id, error: `Unknown method: ${req.method}` }
     } else {
       try {
-        const result = handler(req.args ?? {}, state, { hostPort })
+        const result = handler(req.args ?? {}, state, { hostPort, signInAs: opts?.signInAs })
         response = { id: req.id, result }
       } catch (err) {
         response = { id: req.id, error: err instanceof Error ? err.message : String(err) }

@@ -1,8 +1,7 @@
 // The wire envelope: the three message shapes that travel over the
-// host <-> inner-app MessagePort. Verified against the deployed transport in
-// the monorepo (packages/orbit-shim-transport/src/index.ts) — the host frame
-// sees a single correlated stream, so requests and responses share one channel
-// with id correlation, and pushes are id-less.
+// host <-> inner-app MessagePort. The host frame sees a single correlated
+// stream, so requests and responses share one channel with id correlation,
+// and pushes are id-less.
 
 /**
  * A request the inner app sends to the host. `id` correlates the eventual

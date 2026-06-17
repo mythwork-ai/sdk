@@ -1,9 +1,8 @@
 // Low-level transport over a live MessagePort: id-correlated requests and
 // prefix-matched push subscription. This is the mechanical core the typed
-// client (client.ts) is built on; it mirrors the deployed internal transport
-// (packages/orbit-shim-transport/src/index.ts) on the wire — `{ id, method,
-// args }` out, `{ id, result }` | `{ id, error }` back, id-less `{ type, ... }`
-// pushes routed by prefix.
+// client (client.ts) is built on. Wire format: `{ id, method, args }` out,
+// `{ id, result }` | `{ id, error }` back, id-less `{ type, ... }` pushes
+// routed by prefix.
 
 import { DEFAULT_REQUEST_TIMEOUT_MS, type PushMessage, type RpcResponse } from '@mythwork/protocol'
 
@@ -60,11 +59,10 @@ export function requestOverPort<R = unknown>(
 
 /**
  * Routes id-less push messages arriving on a port to prefix-matched handlers.
- * Subscription semantics match the deployed dispatcher exactly: a subscriber to
- * `'fs'` receives both an exact `'fs'` push AND any `'fs.*'` push (e.g.
- * `'fs.changed'`), while a subscriber to `'fs.changed'` matches only that exact
- * type. The leading-segment guard (`startsWith(prefix + '.')`) means `'fsx'`
- * pushes never leak to an `'fs'` subscriber.
+ * A subscriber to `'fs'` receives both an exact `'fs'` push AND any `'fs.*'`
+ * push (e.g. `'fs.changed'`), while a subscriber to `'fs.changed'` matches
+ * only that exact type. The leading-segment guard (`startsWith(prefix + '.')`)
+ * means `'fsx'` pushes never leak to an `'fs'` subscriber.
  */
 export class PushRouter {
   private readonly handlers = new Map<string, Set<PushHandler>>()
