@@ -16,9 +16,18 @@
 //     explore.getApp reads it back) → updated AppDetail.
 //   - profile.* mutations (setFavorite, myFavorites, update): signed-out THROWS
 //     (the promise rejects), consistent with the deployed host bridge.
+//   - profile.claimHandle: signed-out THROWS (mirrors the real bridge's no-token
+//     throw); on success records the claimed handle so profile.me resolves to a
+//     full profile. (No consent dialog exists in the dev host, so there's no
+//     'denied' path.)
 //   - profile.me: gated-RESULT — signed-out → { ok:false, reason:'sign_in_required' };
 //     signed-in with no handle → { ok:false, reason:'no_profile' };
-//     signed-in with handle (the seeded dev user) → full profile shape.
+//     signed-in with handle (the seeded dev user, or a claimed handle) → full
+//     profile shape.
+//   - noProfile start mode (createDevHost({ noProfile }) / connect({ dev: { noProfile }})):
+//     kernel.signIn adopts a NON-seed-maker identity so profile.me reports
+//     no_profile until profile.claimHandle records a handle — exercises the
+//     explore onboarding flow in dev.
 //   - kernel.signIn/signOut: respond then emit kernel.authChanged push.
 //   - Unknown method: { id, error: 'Unknown method: <m>' } (never hangs).
 
@@ -80,9 +89,17 @@ interface DevState {
    * which wins over the publish-derived fields.
    */
   appMetaOverrides: Map<string, { name?: string; tagline?: string; note?: string }>
+  /**
+   * Start in the fresh-newcomer onboarding mode: kernel.signIn adopts a
+   * non-seed-maker identity so profile.me reports `no_profile` until a handle
+   * is claimed — exercising the explore onboarding flow in dev.
+   */
+  noProfile: boolean
+  /** The handle recorded by profile.claimHandle (undefined until claimed). */
+  claimedHandle: string | undefined
 }
 
-function freshState(user?: User): DevState {
+function freshState(user?: User, noProfile = false): DevState {
   return {
     user: user ?? { kind: 'anonymous', userId: 'anonymous' },
     ratings: new Map(),
@@ -93,6 +110,8 @@ function freshState(user?: User): DevState {
     commentSeq: 1,
     profileFields: { bio: '', location: '', link: '' },
     appMetaOverrides: new Map(),
+    noProfile,
+    claimedHandle: undefined,
   }
 }
 
@@ -405,17 +424,51 @@ const handlers: Record<string, Handler> = {
     }
   },
 
+  // Consent-gated in the real bridge; the dev host has NO consent dialog, so
+  // there is no 'denied' path here. Signed-out THROWS (mirrors the real
+  // bridge's no-token throw). On success, records the handle so profile.me
+  // resolves to the full profile shape — driving the explore onboarding flow.
+  'profile.claimHandle'(args, state) {
+    if (state.user.kind === 'anonymous') throw new Error('sign in required')
+    const handle = String(args['handle'] ?? '')
+      .trim()
+      .toLowerCase()
+    if (!handle) throw new Error('handle required')
+    const user = state.user as { userId: string }
+    // handle_taken: a seed maker already owns this handle, unless it's the
+    // current user's own id or already this session's claimed handle.
+    const seedOwned = SEED_MAKERS.some(m => m.handle === handle)
+    if (seedOwned && handle !== user.userId && handle !== state.claimedHandle) {
+      return { ok: false, reason: 'handle_taken' }
+    }
+    state.claimedHandle = handle
+    return { handle, ownerUserId: user.userId }
+  },
+
   // profile.me: gated-RESULT with three states.
   // Signed-out → { ok:false, reason:'sign_in_required' }
   // Signed-in but no handle → { ok:false, reason:'no_profile' }
   // Signed-in with handle → full profile shape + isOwner:true
-  // The dev signed-in user (kernel.signIn) adopts the first SEED_MAKER's
-  // handle ('devuser'), so the happy path is immediately reachable; the
-  // no_profile branch is defensive — it documents the host contract but isn't
-  // reachable in dev, since the dev signIn always adopts a seeded maker.
+  // In the default mode the dev signed-in user (kernel.signIn) adopts the first
+  // SEED_MAKER's handle ('devuser'), so the happy path is immediately reachable.
+  // The no_profile branch IS reachable in dev via the `noProfile` start mode
+  // (signIn adopts a non-seed-maker identity); profile.claimHandle then records
+  // a handle, after which profile.me resolves to the full profile shape below.
   'profile.me'(_args, state) {
     if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
     const user = state.user as { kind: string; userId: string; displayName?: string }
+    if (state.claimedHandle) {
+      return {
+        handle: state.claimedHandle,
+        displayName: user.displayName ?? state.claimedHandle,
+        appCount: 0,
+        totalLaunches: 0,
+        bio: state.profileFields.bio,
+        location: state.profileFields.location,
+        link: state.profileFields.link,
+        isOwner: true as const,
+      }
+    }
     const maker = SEED_MAKERS.find(m => m.handle === user.userId)
     if (!maker) return { ok: false, reason: 'no_profile' }
     return {
@@ -511,6 +564,21 @@ const handlers: Record<string, Handler> = {
       state.user = ctx.signInAs
       return state.user
     }
+    // noProfile start mode: adopt a NON-seed-maker identity so profile.me
+    // reports `no_profile` until profile.claimHandle records a handle — drives
+    // the explore onboarding flow. ('newcomer' is intentionally not a seed
+    // maker handle.)
+    if (state.noProfile) {
+      state.user = {
+        kind: 'public',
+        userId: 'newcomer',
+        displayName: 'New Maker',
+        picture: '',
+        profileUrl: '',
+      }
+      state.profileFields = { bio: '', location: '', link: '' }
+      return state.user
+    }
     // Default: sign in as the first seed maker ('devuser') so profile.me +
     // profile.get are immediately resolvable on the happy path.
     const maker = SEED_MAKERS[0]!
@@ -534,6 +602,7 @@ const handlers: Record<string, Handler> = {
   'kernel.signOut'(_args, state) {
     state.user = { kind: 'anonymous', userId: 'anonymous' }
     state.profileFields = { bio: '', location: '', link: '' }
+    state.claimedHandle = undefined
     return state.user
   },
 
@@ -753,7 +822,11 @@ const handlers: Record<string, Handler> = {
  *
  * Pass `opts.user` to seed the signed-in identity (editor apps simulating
  * distinct players give each dev client its own identity) and `opts.signInAs`
- * to pin what `kernel.signIn` adopts instead of the default seed maker.
+ * to pin what `kernel.signIn` adopts instead of the default seed maker. Pass
+ * `opts.noProfile` to start in onboarding mode: `kernel.signIn` adopts a
+ * non-seed-maker identity so `profile.me` reports `no_profile` until
+ * `profile.claimHandle` records a handle — exercising the explore onboarding
+ * flow in dev.
  *
  * @example
  * ```ts
@@ -768,12 +841,16 @@ const handlers: Record<string, Handler> = {
  * const b = new MythworkClient(createDevHost({ user: { kind: 'pseudonymous', userId: 'b', displayName: 'Bob' } }))
  * ```
  */
-export function createDevHost(opts?: { user?: User; signInAs?: User }): MessagePort {
+export function createDevHost(opts?: {
+  user?: User
+  signInAs?: User
+  noProfile?: boolean
+}): MessagePort {
   const chan = new MessageChannel()
   const hostPort = chan.port1 // host side — receives requests, sends replies
   const appPort = chan.port2 // given to MythworkClient
 
-  const state = freshState(opts?.user)
+  const state = freshState(opts?.user, opts?.noProfile ?? false)
 
   hostPort.start()
   appPort.start()

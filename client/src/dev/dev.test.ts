@@ -735,6 +735,75 @@ describe('explore.updateAppMeta (owner app-meta override)', () => {
   })
 })
 
+describe('dev host: noProfile onboarding flow', () => {
+  let sdk: MythworkClient
+
+  afterEach(() => {
+    sdk.port.close()
+  })
+
+  it('noProfile signIn → profile.me is { ok:false, reason:"no_profile" }', async () => {
+    sdk = await connect({ dev: { noProfile: true } })
+    expect(sdk).toBeInstanceOf(MythworkClient)
+    await sdk.auth.signIn()
+    const me = await sdk.profile.me()
+    expect(me).toEqual({ ok: false, reason: 'no_profile' })
+  })
+
+  it('claimHandle succeeds and profile.me then resolves with the claimed handle', async () => {
+    sdk = await connect({ dev: { noProfile: true } })
+    const user = await sdk.auth.signIn()
+    const r = await sdk.profile.claimHandle({ handle: 'ada' })
+    // Success shape: NOT a { ok:false } failure.
+    expect('ok' in r === false || r.ok !== false).toBe(true)
+    expect(r).toMatchObject({ handle: 'ada', ownerUserId: user.userId })
+    const me = await sdk.profile.me()
+    expect(me).toMatchObject({ handle: 'ada', isOwner: true })
+    expect('reason' in me).toBe(false)
+  })
+
+  it('claiming a seed maker handle owned by someone else → handle_taken; profile.me stays no_profile', async () => {
+    sdk = await connect({ dev: { noProfile: true } })
+    await sdk.auth.signIn()
+    const r = await sdk.profile.claimHandle({ handle: SEED_MAKERS[0]!.handle })
+    expect(r).toEqual({ ok: false, reason: 'handle_taken' })
+    const me = await sdk.profile.me()
+    expect(me).toEqual({ ok: false, reason: 'no_profile' })
+  })
+
+  it('signed-out claimHandle rejects (throws sign in required)', async () => {
+    sdk = makeClient()
+    await expect(sdk.profile.claimHandle({ handle: 'x' })).rejects.toThrow(/sign in/i)
+  })
+
+  it('claim persists across profile.update', async () => {
+    sdk = await connect({ dev: { noProfile: true } })
+    await sdk.auth.signIn()
+    await sdk.profile.claimHandle({ handle: 'ada' })
+    await sdk.profile.update({ displayName: 'Ada' })
+    const me = await sdk.profile.me()
+    expect(me).toMatchObject({ handle: 'ada', displayName: 'Ada', isOwner: true })
+  })
+
+  it('signOut clears the claim → profile.me is no_profile again on the next signIn', async () => {
+    sdk = await connect({ dev: { noProfile: true } })
+    await sdk.auth.signIn()
+    await sdk.profile.claimHandle({ handle: 'ada' })
+    await sdk.auth.signOut()
+    await sdk.auth.signIn()
+    const me = await sdk.profile.me()
+    expect(me).toEqual({ ok: false, reason: 'no_profile' })
+  })
+
+  it('default mode (dev:true) is unchanged: signIn → profile.me returns a seed profile', async () => {
+    sdk = await connect({ dev: true })
+    await sdk.auth.signIn()
+    const me = await sdk.profile.me()
+    expect('reason' in me).toBe(false)
+    expect(me).toMatchObject({ isOwner: true })
+  })
+})
+
 describe('explore.updateAppMeta — override reflects across all reads (no card↔detail divergence)', () => {
   it("an owner's rename shows in cards/lists/search, not only on the detail page", async () => {
     const sdk = makeClient()

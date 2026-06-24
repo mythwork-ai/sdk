@@ -53,8 +53,13 @@ export interface ConnectOptions {
    */
   env?: HandshakeEnv
   /**
-   * When `true`, skip the host handshake and instead connect to the built-in
+   * When truthy, skip the host handshake and instead connect to the built-in
    * dev host backed by generic seed fixtures. No app-side mock server required.
+   *
+   * Pass `true` for the default (signed-in user adopts the first seed maker), or
+   * an options object to tune the dev host — e.g. `{ noProfile: true }` to start
+   * in onboarding mode (signed-in user with no claimed handle, so `profile.me`
+   * reports `no_profile` until `profile.claimHandle` records one).
    *
    * The dev host module is **dynamically imported** so it is excluded from
    * production bundles when this option is not used.
@@ -64,9 +69,11 @@ export interface ConnectOptions {
    * // vite.config.ts / any bundler entry
    * import { connect } from '@mythwork/sdk'
    * const sdk = await connect({ dev: import.meta.env.DEV })
+   * // Exercise the onboarding flow:
+   * const sdk = await connect({ dev: { noProfile: true } })
    * ```
    */
-  dev?: boolean
+  dev?: boolean | { noProfile?: boolean }
 }
 
 /**
@@ -92,7 +99,8 @@ export async function connect(opts?: ConnectOptions): Promise<MythworkClient> {
   if (opts?.dev) {
     // Dynamic import keeps the dev host + seed out of production bundles.
     const { createDevHost } = await import('./dev/host')
-    return new MythworkClient(createDevHost())
+    const devOpts = typeof opts.dev === 'object' ? opts.dev : undefined
+    return new MythworkClient(createDevHost(devOpts))
   }
   const env = opts?.env ?? browserEnv()
   const port = await acquirePort(env, { timeoutMs: opts?.timeoutMs })
