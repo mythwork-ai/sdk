@@ -671,6 +671,30 @@ const handlers: Record<string, Handler> = {
     return { sha }
   },
 
+  'fs.commitTree'(args, _state, ctx) {
+    // "Copy forward" a source commit's tree as a NEW commit on HEAD: restore the
+    // snapshot into the working tree, then commit it. History grows; HEAD never
+    // moves backward — matches the protocol's commitTree contract and the real
+    // host's restore semantics.
+    const project = ensureProject(args['pid'] as string)
+    const sourceSha = args['sourceSha'] as string
+    const source = project.snapshots.get(sourceSha)
+    if (!source) throw new Error(`fs.commitTree: ${sourceSha} not found`)
+    const author = args['author'] as CommitAuthor | undefined
+    project.files = new Map(source)
+    const sha = devSha(project)
+    project.commits.unshift({
+      sha,
+      message: args['message'] as string,
+      timestamp: new Date(0),
+      author: author?.name ?? 'dev',
+      authorEmail: author?.email ?? 'dev@mythwork.local',
+    })
+    project.snapshots.set(sha, new Map(project.files))
+    pushFsChanged(project, ctx.hostPort, '/', 'updated')
+    return { sha }
+  },
+
   'fs.log'(args) {
     const project = ensureProject(args['pid'] as string)
     const depth = args['depth'] as number | undefined

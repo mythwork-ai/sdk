@@ -70,6 +70,29 @@ describe('dev host — single-client project/fs/git', () => {
     expect(names[p2]).toBe(p2) // create({}) defaults the name to the pid
     expect(names['unknown-pid']).toBeNull() // unknown pid → null
   })
+
+  it('commitTree copies a source commit tree forward as a new commit (history grows)', async () => {
+    const { pid } = await sdk.project.create({})
+    await sdk.fs.write({ pid, path: '/index.html', bytes: enc.encode('<h1>v1</h1>') })
+    const { sha: first } = await sdk.git.commit({ pid, message: 'v1' })
+    await sdk.fs.write({ pid, path: '/index.html', bytes: enc.encode('<h1>v2</h1>') })
+    await sdk.git.commit({ pid, message: 'v2' })
+    const before = (await sdk.git.log({ pid })).length
+
+    const { sha: restored } = await sdk.git.commitTree({
+      pid,
+      sourceSha: first,
+      message: 'restore v1',
+    })
+
+    expect(restored).not.toBe(first)
+    // Working tree is back to the v1 content.
+    expect(dec.decode(await sdk.fs.read({ pid, path: '/index.html' }))).toBe('<h1>v1</h1>')
+    // History GREW by one (copy-forward), not rewound.
+    const after = await sdk.git.log({ pid })
+    expect(after.length).toBe(before + 1)
+    expect(after[0]!.sha).toBe(restored) // newest commit is the restore
+  })
 })
 
 describe('dev host — two clients share one project', () => {
