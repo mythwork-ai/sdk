@@ -26,6 +26,7 @@ import type { PushMessage, RpcRequest, RpcResponse, User } from '@mythwork/proto
 import type {
   AppDetail,
   AppSummary,
+  ChatCompletion,
   CommentNode,
   CommentReply,
   CommitAuthor,
@@ -193,6 +194,17 @@ function pushFsChanged(
 
 function devSha(project: DevProject): string {
   return `dev${(project.commits.length + 1).toString().padStart(7, '0')}`
+}
+
+/** A deterministic normalized OpenAI chat-completion for the dev ai.* handlers. */
+function devCompletion(text: string, model?: string): ChatCompletion {
+  return {
+    id: 'dev-cmpl',
+    object: 'chat.completion',
+    created: 0,
+    model: model ?? 'dev-model',
+    choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
+  }
 }
 
 // ── handler table ─────────────────────────────────────────────────────────────
@@ -525,6 +537,25 @@ const handlers: Record<string, Handler> = {
     return state.user
   },
 
+  // ── ai (mythwork-ai proxy) ───────────────────────────────────────────────────
+  // Sign-in required (the worker 401s without a session) → anonymous THROWS, like
+  // the real bridge. Returns a deterministic normalized OpenAI completion that
+  // echoes the last user turn so an app's happy path renders without a network.
+
+  'ai.chat'(args, state) {
+    if (state.user.kind === 'anonymous') throw new Error('sign in required')
+    const messages = (args['messages'] as { role?: string; content?: unknown }[]) ?? []
+    const lastUser = [...messages].reverse().find(m => m.role === 'user')
+    const echo = typeof lastUser?.content === 'string' ? lastUser.content : ''
+    return devCompletion(`(dev) ${echo}`, args['model'] as string | undefined)
+  },
+
+  'ai.complete'(args, state) {
+    if (state.user.kind === 'anonymous') throw new Error('sign in required')
+    const prompt = typeof args['prompt'] === 'string' ? (args['prompt'] as string) : ''
+    return devCompletion(`(dev) ${prompt}`, args['model'] as string | undefined)
+  },
+
   // ── project (shared store) ───────────────────────────────────────────────────
 
   'project.create'(args, _state, ctx) {
@@ -555,6 +586,17 @@ const handlers: Record<string, Handler> = {
 
   'project.list'() {
     return { pids: [...projects.keys()] }
+  },
+
+  'project.getNames'(args) {
+    // Names are stored on create (project.name); return the cached name per
+    // pid. null for an unknown pid, mirroring the real host's "config not on
+    // disk yet" semantics — though in the in-memory dev host every known
+    // project always has a name.
+    const pids = args['pids'] as string[]
+    const names: Record<string, string | null> = {}
+    for (const pid of pids) names[pid] = projects.get(pid)?.name ?? null
+    return { names }
   },
 
   // ── fs (shared store; writes push fs.changed to other clients) ───────────────

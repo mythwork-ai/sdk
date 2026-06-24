@@ -106,9 +106,11 @@ export interface ProjectInfo {
 }
 
 /**
- * The parsed `orbitcode.config.json` returned by `config.get`. Always carries a
- * `projectId` (the host backfills it to the `pid` when the file is missing or
- * lacks one) plus whatever else the project's config holds.
+ * The project identity + display metadata returned by `config.get` (AGE-97).
+ * Always carries a `projectId` — the host's resolved canonical id from the
+ * registry, falling back to the open `pid` when the project is still local-only.
+ * The display fields (`name`/`tagline`/`theme`/`tags`) come from the app's
+ * `package.json` `mythwork` block.
  */
 export type ProjectConfig = { projectId: string } & Record<string, unknown>
 
@@ -287,3 +289,78 @@ export interface NotificationPrefs {
  * `'new'` by `publishedAt`, `'trending'` by the 7d-vs-prev-7d trend.
  */
 export type AppSort = 'popular' | 'new' | 'trending'
+
+// ── ai.* (mythwork-ai proxy, OpenAI-compatible wire) ─────────────────────────
+// @experimental — API may still evolve before 1.0. These mirror the
+// chat-completions contract the `mythwork-ai` worker (PR #382) accepts/returns:
+// ONE normalized OpenAI shape for both providers. The bridge forwards the
+// request verbatim to the worker with the host-held session Bearer — it does
+// not reshape it — so these types ARE the wire contract.
+
+/**
+ * @experimental One chat message in the OpenAI-compatible request. `content` is
+ * a string for plain text, an array of content blocks for multimodal/tool
+ * payloads, or `null` for an assistant turn that is purely tool calls.
+ * `tool_calls` / `tool_call_id` / `name` carry the OpenAI function-calling
+ * fields. Wire field names are snake_case to match the proxy verbatim.
+ */
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content: string | unknown[] | null
+  tool_calls?: unknown[]
+  tool_call_id?: string
+  name?: string
+}
+
+/**
+ * @experimental An OpenAI-style tool definition forwarded to the proxy
+ * untouched. Left as an open record because the proxy owns the schema; the SDK
+ * does not validate it.
+ */
+export type OpenAITool = Record<string, unknown>
+
+/**
+ * @experimental The OpenAI-compatible chat-completion request body the
+ * `mythwork-ai` worker accepts. `model` defaults proxy-side when omitted;
+ * `system` is a convenience the proxy folds into the message list; `stream` is
+ * accepted by the worker but the bridge transport delivers a single
+ * (non-streamed) reply for v1 (see `ai.chat` — TODO(stream)).
+ */
+export interface ChatCompletionRequest {
+  model?: string
+  messages: ChatMessage[]
+  system?: string | { type: 'text'; text: string }[]
+  max_tokens?: number
+  temperature?: number
+  top_p?: number
+  stream?: boolean
+  tools?: OpenAITool[]
+  tool_choice?: unknown
+  thinking?: boolean
+}
+
+/**
+ * @experimental One choice in a normalized OpenAI chat-completion response. The
+ * proxy returns the same shape for every provider, so `message` is a
+ * {@link ChatMessage} (assistant role) and `finish_reason` is the OpenAI enum.
+ */
+export interface ChatCompletionChoice {
+  index: number
+  message: ChatMessage
+  finish_reason: string | null
+}
+
+/**
+ * @experimental The normalized (non-streamed) OpenAI chat-completion response
+ * returned by the `mythwork-ai` worker. `usage` is open because token-accounting
+ * fields vary by provider. The success branch keeps the wire shape verbatim so
+ * apps that already speak OpenAI can consume it directly.
+ */
+export interface ChatCompletion {
+  id: string
+  object: 'chat.completion'
+  created: number
+  model: string
+  choices: ChatCompletionChoice[]
+  usage?: Record<string, unknown>
+}

@@ -11,6 +11,8 @@ import type {
   AppDetail,
   AppSort,
   AppSummary,
+  ChatCompletion,
+  ChatMessage,
   CollectionInfo,
   CommentNode,
   CommitAuthor,
@@ -20,6 +22,7 @@ import type {
   MakerSummary,
   NotificationPrefs,
   Ok,
+  OpenAITool,
   ProjectConfig,
   ProjectInfo,
   RoomDescriptor,
@@ -27,6 +30,24 @@ import type {
   TagCount,
   User,
 } from './data'
+
+/**
+ * @experimental Shared `opts` for the `ai.*` methods — the OpenAI-compatible
+ * knobs an app may set per call. Omitted fields default proxy-side. These map
+ * 1:1 onto the worker's {@link import('./data').ChatCompletionRequest} (the
+ * bridge forwards them verbatim); `maxTokens` is the only camelCase rename
+ * (→ `max_tokens`) so the app surface reads idiomatically.
+ */
+export interface AiOpts {
+  model?: string
+  system?: string
+  maxTokens?: number
+  temperature?: number
+  topP?: number
+  tools?: OpenAITool[]
+  toolChoice?: unknown
+  thinking?: boolean
+}
 
 /**
  * Result of the profile mutations: the host either returns the server JSON on
@@ -569,7 +590,15 @@ export interface MethodMap {
    * strongly typed at the wire boundary). Backing: profiles columns.
    */
   'profile.update': {
-    params: { displayName?: string; bio?: string; location?: string; link?: string }
+    params: {
+      displayName?: string
+      bio?: string
+      location?: string
+      link?: string
+      /** Cross-app display theme (migration 0015). Persisted on the profile and
+       *  surfaced via profile.me().theme so every platform app honors it. */
+      theme?: 'system' | 'light' | 'dark'
+    }
     result: ProfileMutationResult
   }
   /**
@@ -635,6 +664,69 @@ export interface MethodMap {
    * Backing: blob/CAS + projects D1.
    */
   'project.remix': { params: { projectId: string }; result: ProjectInfo }
+
+  // ── ai.* (mythwork-ai proxy) ────────────────────────────────────────────
+  // @experimental — API may still evolve before 1.0. The app-facing surface of
+  // the `mythwork-ai` proxy (PR #382): an OpenAI-compatible chat-completions
+  // call the host frame fulfills with the host-held session Bearer (never
+  // exposed to the app). The proxy returns ONE normalized
+  // {@link ChatCompletion} for both providers. SIGN-IN REQUIRED: the worker
+  // 401s without a session, so the bridge throws 'sign in required' with ZERO
+  // network when signed out, and a non-2xx (incl. 402 out-of-credits / 429
+  // rate-limited) throws — posture `signedOut: 'throw', onError: 'throw'`
+  // (the hard-gated "do it" action, like `profile.myFavorites`).
+  //
+  // v1 is NON-streaming: `stream` is accepted on the wire but the bridge
+  // transport delivers a single reply (see TODO(stream) in the client). Both
+  // methods resolve the full normalized completion; the `@mythwork/sdk` `ai`
+  // namespace adds the `ai.complete → string` / `ai.chat → message`
+  // conveniences on top.
+
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Multi-turn chat completion. `messages` is the OpenAI-compatible turn list;
+   * `opts` carries the OpenAI knobs ({@link import('./methods').AiOpts}, folded
+   * into the request body by the client). Resolves the normalized
+   * {@link ChatCompletion}. Sign-in required (the bridge throws when signed out
+   * or on a non-2xx). Backing: mythwork-ai worker.
+   */
+  'ai.chat': {
+    params: {
+      messages: ChatMessage[]
+      model?: string
+      system?: string
+      max_tokens?: number
+      temperature?: number
+      top_p?: number
+      tools?: OpenAITool[]
+      tool_choice?: unknown
+      thinking?: boolean
+    }
+    result: ChatCompletion
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Single-prompt completion convenience: `prompt` becomes one user turn; the
+   * same OpenAI knobs apply. Resolves the normalized {@link ChatCompletion} (the
+   * `@mythwork/sdk` `ai.complete` helper extracts the assistant text). Sign-in
+   * required. Backing: mythwork-ai worker.
+   */
+  'ai.complete': {
+    params: {
+      prompt: string
+      model?: string
+      system?: string
+      max_tokens?: number
+      temperature?: number
+      top_p?: number
+      tools?: OpenAITool[]
+      tool_choice?: unknown
+      thinking?: boolean
+    }
+    result: ChatCompletion
+  }
 }
 
 /** Every valid wire method string. */

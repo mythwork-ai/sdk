@@ -8,6 +8,9 @@
 // the protocol types are the contract, the wire is unchanged.
 
 import type {
+  AiOpts,
+  ChatCompletion,
+  ChatMessage,
   Event as ProtocolEvent,
   EventMap,
   EventPayload,
@@ -465,4 +468,75 @@ export class MythworkClient {
     updateAppMeta: (params: MethodParams<'explore.updateAppMeta'>, opts?: RequestOptions) =>
       this.request('explore.updateAppMeta', params, opts),
   }
+
+  // ── ai.* (mythwork-ai proxy) ──────────────────────────────────────────────
+  /**
+   * @experimental — API may still evolve before 1.0. AI completions via the
+   * `mythwork-ai` proxy. Sign-in required: the host attaches its own session
+   * Bearer and the call REJECTS (`'sign in required'`) when signed out, on a
+   * stale token, out of credits (`'… out of credits'`), or rate-limited
+   * (`'… rate limited'`). Maps to `ai.chat` / `ai.complete`.
+   *
+   * v1 is NON-streaming — `ai.chat` resolves the full assistant message rather
+   * than an async iterable of deltas. TODO(stream): a streaming variant is a
+   * fast-follow once the bridge transport carries correlated chunk pushes.
+   */
+  readonly ai = {
+    /**
+     * @experimental Multi-turn chat. Resolves the assistant {@link ChatMessage}
+     * (the first choice's message). `opts` are the OpenAI knobs. Wire: `ai.chat`.
+     */
+    chat: async (
+      messages: ChatMessage[],
+      opts?: AiOpts,
+      reqOpts?: RequestOptions,
+    ): Promise<ChatMessage> => {
+      const completion = await this.request(
+        'ai.chat',
+        { messages, ...aiWireOpts(opts) } as MethodParams<'ai.chat'>,
+        reqOpts,
+      )
+      return assistantMessage(completion)
+    },
+    /**
+     * @experimental Single-prompt convenience. Resolves the assistant text (the
+     * first choice's `message.content` as a string). `opts` are the OpenAI
+     * knobs. Wire: `ai.complete`.
+     */
+    complete: async (prompt: string, opts?: AiOpts, reqOpts?: RequestOptions): Promise<string> => {
+      const completion = await this.request(
+        'ai.complete',
+        { prompt, ...aiWireOpts(opts) } as MethodParams<'ai.complete'>,
+        reqOpts,
+      )
+      const content = assistantMessage(completion).content
+      return typeof content === 'string' ? content : ''
+    },
+  }
+}
+
+/**
+ * Map the app-facing camelCase {@link AiOpts} onto the snake_case OpenAI wire
+ * fields the `mythwork-ai` worker expects (`maxTokens` → `max_tokens`, etc.).
+ * Only present keys are emitted so the worker applies its own defaults.
+ */
+function aiWireOpts(opts?: AiOpts): Record<string, unknown> {
+  if (!opts) return {}
+  const out: Record<string, unknown> = {}
+  if (opts.model !== undefined) out.model = opts.model
+  if (opts.system !== undefined) out.system = opts.system
+  if (opts.maxTokens !== undefined) out.max_tokens = opts.maxTokens
+  if (opts.temperature !== undefined) out.temperature = opts.temperature
+  if (opts.topP !== undefined) out.top_p = opts.topP
+  if (opts.tools !== undefined) out.tools = opts.tools
+  if (opts.toolChoice !== undefined) out.tool_choice = opts.toolChoice
+  if (opts.thinking !== undefined) out.thinking = opts.thinking
+  return out
+}
+
+/** The assistant message from the first choice of a normalized completion. */
+function assistantMessage(completion: ChatCompletion): ChatMessage {
+  const message = completion.choices?.[0]?.message
+  if (!message) throw new Error('@mythwork/sdk: ai response had no choices')
+  return message
 }

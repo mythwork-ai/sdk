@@ -59,6 +59,17 @@ describe('dev host — single-client project/fs/git', () => {
       dec.decode(await sdk.git.showVersion({ pid, shaLike: 'HEAD', path: '/index.html' })),
     ).toBe('<h1>v2</h1>')
   })
+
+  it('getNames returns stored project names; list + getNames round-trip', async () => {
+    const { pid: p1 } = await sdk.project.create({ projectName: 'first app' })
+    const { pid: p2 } = await sdk.project.create({}) // no name → defaults to pid
+    const { pids } = await sdk.project.list({})
+    expect(pids).toEqual(expect.arrayContaining([p1, p2]))
+    const { names } = await sdk.project.getNames({ pids: [p1, p2, 'unknown-pid'] })
+    expect(names[p1]).toBe('first app')
+    expect(names[p2]).toBe(p2) // create({}) defaults the name to the pid
+    expect(names['unknown-pid']).toBeNull() // unknown pid → null
+  })
 })
 
 describe('dev host — two clients share one project', () => {

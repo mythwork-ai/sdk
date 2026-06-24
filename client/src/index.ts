@@ -27,6 +27,19 @@ export type { RequestOptions, PushHandler } from './transport'
 export { acquirePort, browserEnv, NO_PORT_ERROR } from './handshake'
 export type { HandshakeEnv, HandshakeOptions } from './handshake'
 
+// Top-level auth-consume: obtain + use the platform session from a page with NO
+// host frame (the landing site, a served app's own chrome) via the auth-iframe
+// postMessage bridge + the `/signin` redirect entry.
+export { connectAuth, browserAuthEnv } from './auth'
+export type {
+  AuthConsumer,
+  AuthUser,
+  AuthChangeCallback,
+  ConnectAuthOptions,
+  AuthEnv,
+  AuthFrame,
+} from './auth'
+
 /** Options for {@link connect}. */
 export interface ConnectOptions {
   /**

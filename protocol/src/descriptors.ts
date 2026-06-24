@@ -8,7 +8,9 @@
 //
 // Host-local methods (fs.*, project.*, collab.*, kernel.*, db.*, ydocs.*,
 // config.get) have no HTTP binding and never appear here. The explore and
-// profile namespaces are fully declared below.
+// profile namespaces are fully declared below. The `ai.*` namespace also
+// appears here, but binds to a SEPARATE backend (the `mythwork-ai` worker on
+// ai.{zone}, resolved bridge-side) rather than the api worker.
 
 import type { MethodMap } from './methods'
 
@@ -76,8 +78,9 @@ export interface MethodDescriptor {
 
 /**
  * @experimental The descriptor table. Covers the explore namespace (all 14
- * methods) and the profile namespace methods. Host-local namespaces never
- * appear here.
+ * methods), the profile namespace methods, and the `ai.*` namespace (which
+ * binds to the separate `mythwork-ai` worker, not the api worker). Host-local
+ * namespaces never appear here.
  */
 export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescriptor>> = {
   // ── explore.* ────────────────────────────────────────────────────────────
@@ -184,6 +187,24 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
   },
   'profile.setNotificationPrefs': {
     http: { verb: 'PUT', path: '/profile/me/notification-prefs' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+
+  // ── ai.* ───────────────────────────────────────────────────────────────────
+  // The ONE exception to "every entry binds to the api worker": the `ai.*`
+  // methods POST to the SEPARATE `mythwork-ai` worker origin (ai.{zone}),
+  // resolved bridge-side via origin-config — `http.path` here is the
+  // single-endpoint worker root, NOT an api-worker route. Both are hard-gated
+  // signed-in "do it" actions (the worker 401s without a session), so they
+  // THROW on both axes, exactly like profile.myFavorites / the notification-pref
+  // writes: no token → throw 'sign in required' with ZERO network; a non-2xx
+  // (incl. 402 out-of-credits / 429 rate-limited) throws.
+  'ai.chat': {
+    http: { verb: 'POST', path: '/' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'ai.complete': {
+    http: { verb: 'POST', path: '/' },
     auth: { signedOut: 'throw', onError: 'throw' },
   },
 }

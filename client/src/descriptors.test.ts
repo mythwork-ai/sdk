@@ -59,5 +59,14 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
     // the hybrid the two axes were introduced for: throw with no token, but map
     // a validation 4xx to { ok:false, reason } so a settings screen can show it.
     expect(auth('profile.update')).toEqual({ signedOut: 'throw', onError: 'result' })
+    // ai.* — hard-gated signed-in "do it" actions on the separate mythwork-ai
+    // worker: no token → throw, a non-2xx (incl. 402/429) → throw.
+    expect(auth('ai.chat')).toEqual({ signedOut: 'throw', onError: 'throw' })
+    expect(auth('ai.complete')).toEqual({ signedOut: 'throw', onError: 'throw' })
+  })
+
+  it('binds ai.* to the single-endpoint worker root via POST', () => {
+    expect(API_METHOD_DESCRIPTORS['ai.chat']?.http).toEqual({ verb: 'POST', path: '/' })
+    expect(API_METHOD_DESCRIPTORS['ai.complete']?.http).toEqual({ verb: 'POST', path: '/' })
   })
 })

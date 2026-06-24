@@ -148,7 +148,7 @@ write operations are **auth-gated** (they associate a canonical project id first
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
-| `config.get` | `{ pid: string }` | `ProjectConfig` | Always carries `projectId`; host backfills when config is missing |
+| `config.get` | `{ pid: string }` | `ProjectConfig` | Always carries `projectId` (registry; falls back to `pid` when local-only); display fields from `package.json` `mythwork` |
 
 ### secrets.*
 
@@ -243,7 +243,7 @@ the `type` field.
 | `DiffLine` | `{ type: 'add' \| 'delete' \| 'context'; content: string }` |
 | `RoomDescriptor` | `{ roomId, serverUrl, joinToken? }` — from `collab.openRoom`; `joinToken` absent for local-only projects |
 | `ProjectInfo` | `{ pid: string; role: 'leader' \| 'follower' }` — from `project.create`/`project.open` |
-| `ProjectConfig` | `{ projectId: string } & Record<string, unknown>` — parsed `orbitcode.config.json` |
+| `ProjectConfig` | `{ projectId: string } & Record<string, unknown>` — `projectId` from the registry; display fields from `package.json` `mythwork` |
 | `Ok` | `{ ok: true }` — trivial success acknowledgement |
 | `ProfileMutationResult` | `{ ok: false; reason: string } \| (Record<string, unknown> & { ok?: true })` — profile mutation result |
 

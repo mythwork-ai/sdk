@@ -226,6 +226,88 @@ describe('profile.me three-state contract (0.2.0)', () => {
   })
 })
 
+describe('ai namespace (mythwork-ai proxy)', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+  let outbound: { id: string; method: string; args: Record<string, unknown> }[]
+
+  /** A normalized completion the host returns for ai.chat / ai.complete. */
+  const completion = {
+    id: 'cmpl-1',
+    object: 'chat.completion' as const,
+    created: 1,
+    model: 'claude-opus-4-8',
+    choices: [
+      {
+        index: 0,
+        message: { role: 'assistant' as const, content: 'hi there' },
+        finish_reason: 'stop',
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    chan = new MessageChannel()
+    outbound = []
+    chan.port2.start()
+    chan.port2.addEventListener('message', e => {
+      const d = e.data as { id: string; method: string; args: Record<string, unknown> }
+      outbound.push(d)
+      chan.port2.postMessage({ id: d.id, result: completion })
+    })
+    client = new MythworkClient(chan.port1)
+  })
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+  })
+
+  it('ai.chat sends ai.chat with the messages and returns the assistant message', async () => {
+    const msg = await client.ai.chat([{ role: 'user', content: 'hi' }])
+    expect(outbound).toHaveLength(1)
+    expect(outbound[0]!.method).toBe('ai.chat')
+    expect(outbound[0]!.args).toEqual({ messages: [{ role: 'user', content: 'hi' }] })
+    expect(msg).toEqual({ role: 'assistant', content: 'hi there' })
+  })
+
+  it('ai.chat maps camelCase opts onto the snake_case wire params', async () => {
+    await client.ai.chat([{ role: 'user', content: 'hi' }], {
+      model: 'claude-opus-4-8',
+      system: 'be terse',
+      maxTokens: 256,
+      temperature: 0.2,
+      topP: 0.9,
+      tools: [{ type: 'function' }],
+      toolChoice: 'auto',
+      thinking: true,
+    })
+    expect(outbound[0]!.args).toEqual({
+      messages: [{ role: 'user', content: 'hi' }],
+      model: 'claude-opus-4-8',
+      system: 'be terse',
+      max_tokens: 256,
+      temperature: 0.2,
+      top_p: 0.9,
+      tools: [{ type: 'function' }],
+      tool_choice: 'auto',
+      thinking: true,
+    })
+  })
+
+  it('ai.complete sends ai.complete with the prompt and returns the assistant text', async () => {
+    const text = await client.ai.complete('write a haiku')
+    expect(outbound).toHaveLength(1)
+    expect(outbound[0]!.method).toBe('ai.complete')
+    expect(outbound[0]!.args).toEqual({ prompt: 'write a haiku' })
+    expect(text).toBe('hi there')
+  })
+
+  it('ai.complete maps camelCase opts onto the snake_case wire params', async () => {
+    await client.ai.complete('hi', { system: 'be terse', maxTokens: 64 })
+    expect(outbound[0]!.args).toEqual({ prompt: 'hi', system: 'be terse', max_tokens: 64 })
+  })
+})
+
 describe('event helpers route to the right push prefix', () => {
   let chan: MessageChannel
   let client: MythworkClient

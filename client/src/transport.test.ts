@@ -86,13 +86,31 @@ describe('PushRouter prefix matching', () => {
     chan.port2.close()
   })
 
-  const flush = () => new Promise(r => setTimeout(r, 0))
+  // MessagePort delivery is async and, under pool contention, not bound to a
+  // single macrotask — so a lone setTimeout(0) raced the dispatch and flaked in
+  // the pre-commit gauntlet (same failure the requestOverPort block above fixed
+  // by polling). Instead, post a sentinel push AFTER the message under test and
+  // await its arrival: a single port delivers in FIFO order, so once the
+  // sentinel routes the prior push has already been dispatched. Deterministic
+  // for both positive (expect 1) and negative (expect 0) assertions.
+  const settle = async () => {
+    let seen = false
+    const off = router.subscribe('__settle', () => {
+      seen = true
+    })
+    chan.port2.postMessage({ type: '__settle' })
+    const deadline = Date.now() + 2000
+    while (!seen && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 5))
+    }
+    off()
+  }
 
   it("delivers 'fs.changed' to a bare 'fs' prefix subscriber", async () => {
     const hits: unknown[] = []
     router.subscribe('fs', m => hits.push(m))
     chan.port2.postMessage({ type: 'fs.changed', pid: 'p', path: 'a', kind: 'updated' })
-    await flush()
+    await settle()
     expect(hits).toHaveLength(1)
     expect((hits[0] as { type: string }).type).toBe('fs.changed')
   })
@@ -101,7 +119,7 @@ describe('PushRouter prefix matching', () => {
     const hits: unknown[] = []
     router.subscribe('fs', m => hits.push(m))
     chan.port2.postMessage({ type: 'fsx.changed', whatever: 1 })
-    await flush()
+    await settle()
     expect(hits).toHaveLength(0)
   })
 
@@ -109,7 +127,7 @@ describe('PushRouter prefix matching', () => {
     const hits: unknown[] = []
     router.subscribe('fs.changed', m => hits.push(m))
     chan.port2.postMessage({ type: 'fs.changed', pid: 'p', path: 'a', kind: 'added' })
-    await flush()
+    await settle()
     expect(hits).toHaveLength(1)
   })
 
@@ -117,7 +135,7 @@ describe('PushRouter prefix matching', () => {
     const hits: unknown[] = []
     router.subscribe('fs', m => hits.push(m))
     chan.port2.postMessage({ id: '7', result: { type: 'fs.changed' } })
-    await flush()
+    await settle()
     expect(hits).toHaveLength(0)
   })
 
@@ -125,11 +143,11 @@ describe('PushRouter prefix matching', () => {
     const hits: unknown[] = []
     const off = router.subscribe('fs', m => hits.push(m))
     chan.port2.postMessage({ type: 'fs.changed', pid: 'p', path: 'a', kind: 'updated' })
-    await flush()
+    await settle()
     expect(hits).toHaveLength(1)
     off()
     chan.port2.postMessage({ type: 'fs.changed', pid: 'p', path: 'b', kind: 'updated' })
-    await flush()
+    await settle()
     expect(hits).toHaveLength(1)
   })
 })

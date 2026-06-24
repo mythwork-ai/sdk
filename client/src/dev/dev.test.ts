@@ -274,6 +274,39 @@ describe('profile.* THROW posture (signed-out)', () => {
   })
 })
 
+describe('ai.* (mythwork-ai dev mock)', () => {
+  let sdk: MythworkClient
+
+  beforeEach(() => {
+    sdk = makeClient()
+  })
+  afterEach(() => {
+    sdk.port.close()
+  })
+
+  it('ai.complete signed-out rejects (sign-in required)', async () => {
+    await expect(sdk.ai.complete('hello')).rejects.toThrow(/sign in/i)
+  })
+
+  it('ai.chat signed-out rejects (sign-in required)', async () => {
+    await expect(sdk.ai.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(/sign in/i)
+  })
+
+  it('ai.complete returns the assistant text after signIn', async () => {
+    await sdk.auth.signIn()
+    const text = await sdk.ai.complete('hello')
+    expect(text).toContain('hello')
+  })
+
+  it('ai.chat returns the assistant message after signIn', async () => {
+    await sdk.auth.signIn()
+    const msg = await sdk.ai.chat([{ role: 'user', content: 'ping' }])
+    expect(msg.role).toBe('assistant')
+    expect(typeof msg.content).toBe('string')
+    expect(msg.content).toContain('ping')
+  })
+})
+
 describe('kernel.getUser', () => {
   it('returns anonymous sentinel when signed out', async () => {
     const sdk = makeClient()
