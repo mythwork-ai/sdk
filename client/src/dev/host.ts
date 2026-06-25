@@ -594,6 +594,11 @@ const handlers: Record<string, Handler> = {
         displayName: 'New Maker',
         picture: '',
         profileUrl: '',
+        access: {
+          approved: false,
+          approvedAt: null,
+          acceptedAt: null,
+        },
       }
       state.profileFields = { bio: '', location: '', link: '' }
       return state.user
@@ -607,6 +612,11 @@ const handlers: Record<string, Handler> = {
       displayName: maker.displayName,
       picture: '',
       profileUrl: `https://myth.work/@${maker.handle}`,
+      access: {
+        approved: true,
+        approvedAt: '2024-01-01T00:00:00.000Z',
+        acceptedAt: '2024-01-01T00:00:00.000Z',
+      },
     }
     // Seed the editable fields from the maker so profile.me shows the seed
     // profile before any edit, and a later profile.update round-trips.

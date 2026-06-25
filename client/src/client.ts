@@ -362,6 +362,12 @@ export class MythworkClient {
      */
     submitClaim: (params: MethodParams<'profile.submitClaim'>, opts?: RequestOptions) =>
       this.request('profile.submitClaim', params, opts),
+    /**
+     * @experimental — record that an approved user accepted their invite.
+     * Best-effort: callers should not block UI on it. Wire: `profile.acceptInvite`.
+     */
+    acceptInvite: (params: MethodParams<'profile.acceptInvite'> = {}, opts?: RequestOptions) =>
+      this.request('profile.acceptInvite', params, opts),
   }
 
   // ── explore.* ────────────────────────────────────────────────────────────

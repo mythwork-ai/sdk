@@ -2,6 +2,15 @@
 // canonical copies the protocol owns — the package defines its own copy so it
 // stays self-contained. Each shape is verified against the live host behavior.
 
+/** Product-approval state for a signed-in user (Approval Status API).
+ *  `approved` is the only field the nav strictly needs; timestamps are for
+ *  the acceptance funnel. ISO-8601 strings; null until the event occurs. */
+export interface UserAccess {
+  approved: boolean
+  approvedAt: string | null
+  acceptedAt: string | null
+}
+
 /**
  * The resolved platform identity of the current user. A discriminated union on
  * `kind`.
@@ -12,13 +21,14 @@
  */
 export type User =
   | { kind: 'anonymous'; userId: string }
-  | { kind: 'pseudonymous'; userId: string; displayName: string }
+  | { kind: 'pseudonymous'; userId: string; displayName: string; access: UserAccess }
   | {
       kind: 'public'
       userId: string
       displayName: string
       picture: string
       profileUrl: string
+      access: UserAccess
     }
 
 /**

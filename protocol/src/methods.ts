@@ -29,6 +29,7 @@ import type {
   SpotlightItem,
   TagCount,
   User,
+  UserAccess,
 } from './data'
 
 /**
@@ -649,6 +650,9 @@ export interface MethodMap {
     }
     result: Ok | { ok: false; reason: string }
   }
+  /** Record that an approved user accepted their invite. Best-effort + idempotent;
+   *  identity comes from the session. Returns the updated access block. */
+  'profile.acceptInvite': { params: Record<string, never>; result: UserAccess }
 
   // ── project.* (draft addition — explore backend, no bridge yet) ─────────
   // @experimental Draft surface — not yet served by deployed hosts (explore
