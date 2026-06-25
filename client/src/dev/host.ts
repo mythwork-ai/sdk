@@ -28,6 +28,12 @@
 //     kernel.signIn adopts a NON-seed-maker identity so profile.me reports
 //     no_profile until profile.claimHandle records a handle — exercises the
 //     explore onboarding flow in dev.
+//   - firstParty mode (createDevHost({ firstParty }) / connect({ dev: { firstParty }})):
+//     simulates an allowlisted/first-party app — anonymous ai.chat/ai.complete
+//     RESOLVE (to a devCompletion echo) instead of throwing 'sign in required',
+//     mirroring the production first-party token. Symmetric opt-out to the
+//     default non-allowlisted throw. Scoped to ai.* ONLY: profile writes still
+//     throw when signed out, faithful to production (the token authorizes ai.*).
 //   - kernel.signIn/signOut: respond then emit kernel.authChanged push.
 //   - Unknown method: { id, error: 'Unknown method: <m>' } (never hangs).
 
@@ -95,13 +101,25 @@ interface DevState {
    * is claimed — exercising the explore onboarding flow in dev.
    */
   noProfile: boolean
+  /**
+   * Simulate a first-party / allowlisted app: anonymous `ai.chat`/`ai.complete`
+   * resolve instead of throwing `'sign in required'` — mirroring production,
+   * where the serve worker mints a first-party token so an allowlisted app's
+   * anonymous visitors reach `ai.*` (e.g. myth-landing's signed-out hero
+   * planner). Default (false) keeps the non-allowlisted "sign in required"
+   * throw. NOTE: first-party only authorizes `ai.*`; profile writes still
+   * require a real user session, so those handlers are unaffected.
+   */
+  firstParty: boolean
   /** The handle recorded by profile.claimHandle (undefined until claimed). */
   claimedHandle: string | undefined
 }
 
-function freshState(user?: User, noProfile = false): DevState {
+function freshState(
+  opts: { user?: User; noProfile?: boolean; firstParty?: boolean } = {},
+): DevState {
   return {
-    user: user ?? { kind: 'anonymous', userId: 'anonymous' },
+    user: opts.user ?? { kind: 'anonymous', userId: 'anonymous' },
     ratings: new Map(),
     favoriteApps: new Set(),
     favoriteCreators: new Set(),
@@ -110,7 +128,8 @@ function freshState(user?: User, noProfile = false): DevState {
     commentSeq: 1,
     profileFields: { bio: '', location: '', link: '' },
     appMetaOverrides: new Map(),
-    noProfile,
+    noProfile: opts.noProfile ?? false,
+    firstParty: opts.firstParty ?? false,
     claimedHandle: undefined,
   }
 }
@@ -608,11 +627,16 @@ const handlers: Record<string, Handler> = {
 
   // ── ai (mythwork-ai proxy) ───────────────────────────────────────────────────
   // Sign-in required (the worker 401s without a session) → anonymous THROWS, like
-  // the real bridge. Returns a deterministic normalized OpenAI completion that
-  // echoes the last user turn so an app's happy path renders without a network.
+  // the real bridge for a NON-allowlisted app. The `firstParty` opt-out
+  // (createDevHost({ firstParty }) / connect({ dev: { firstParty }})) simulates an
+  // allowlisted app: the serve worker mints a first-party token so anonymous
+  // callers reach ai.* — so in firstParty mode an anonymous caller proceeds to
+  // devCompletion just like a signed-in one (e.g. myth-landing's signed-out hero
+  // planner). Returns a deterministic normalized OpenAI completion that echoes the
+  // last user turn so an app's happy path renders without a network.
 
   'ai.chat'(args, state) {
-    if (state.user.kind === 'anonymous') throw new Error('sign in required')
+    if (!state.firstParty && state.user.kind === 'anonymous') throw new Error('sign in required')
     const messages = (args['messages'] as { role?: string; content?: unknown }[]) ?? []
     const lastUser = [...messages].reverse().find(m => m.role === 'user')
     const echo = typeof lastUser?.content === 'string' ? lastUser.content : ''
@@ -620,7 +644,7 @@ const handlers: Record<string, Handler> = {
   },
 
   'ai.complete'(args, state) {
-    if (state.user.kind === 'anonymous') throw new Error('sign in required')
+    if (!state.firstParty && state.user.kind === 'anonymous') throw new Error('sign in required')
     const prompt = typeof args['prompt'] === 'string' ? (args['prompt'] as string) : ''
     return devCompletion(`(dev) ${prompt}`, args['model'] as string | undefined)
   },
@@ -826,7 +850,10 @@ const handlers: Record<string, Handler> = {
  * `opts.noProfile` to start in onboarding mode: `kernel.signIn` adopts a
  * non-seed-maker identity so `profile.me` reports `no_profile` until
  * `profile.claimHandle` records a handle — exercising the explore onboarding
- * flow in dev.
+ * flow in dev. Pass `opts.firstParty` to simulate an allowlisted/first-party
+ * app so anonymous `ai.chat`/`ai.complete` resolve instead of throwing
+ * `'sign in required'` — mirroring the production first-party token (e.g.
+ * myth-landing's signed-out hero planner).
  *
  * @example
  * ```ts
@@ -845,12 +872,17 @@ export function createDevHost(opts?: {
   user?: User
   signInAs?: User
   noProfile?: boolean
+  firstParty?: boolean
 }): MessagePort {
   const chan = new MessageChannel()
   const hostPort = chan.port1 // host side — receives requests, sends replies
   const appPort = chan.port2 // given to MythworkClient
 
-  const state = freshState(opts?.user, opts?.noProfile ?? false)
+  const state = freshState({
+    user: opts?.user,
+    noProfile: opts?.noProfile,
+    firstParty: opts?.firstParty,
+  })
 
   hostPort.start()
   appPort.start()

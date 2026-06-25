@@ -307,6 +307,41 @@ describe('ai.* (mythwork-ai dev mock)', () => {
   })
 })
 
+describe('ai.* firstParty mode (anonymous allowlisted-app simulation)', () => {
+  let sdk: MythworkClient
+
+  afterEach(() => {
+    sdk.port.close()
+  })
+
+  it('anonymous ai.complete resolves to a (dev) echo (no sign-in throw)', async () => {
+    sdk = await connect({ dev: { firstParty: true } })
+    const text = await sdk.ai.complete('hello')
+    expect(text).toContain('hello')
+  })
+
+  it('anonymous ai.chat resolves to an assistant message (no sign-in throw)', async () => {
+    sdk = await connect({ dev: { firstParty: true } })
+    const msg = await sdk.ai.chat([{ role: 'user', content: 'ping' }])
+    expect(msg.role).toBe('assistant')
+    expect(typeof msg.content).toBe('string')
+    expect(msg.content).toContain('ping')
+  })
+
+  it('a signed-in caller still works in firstParty mode (regression)', async () => {
+    sdk = await connect({ dev: { firstParty: true } })
+    await sdk.auth.signIn()
+    const text = await sdk.ai.complete('hi there')
+    expect(text).toContain('hi there')
+  })
+
+  it('default mode (dev:true) still throws for anonymous ai.* (non-allowlisted app)', async () => {
+    sdk = await connect({ dev: true })
+    await expect(sdk.ai.complete('hello')).rejects.toThrow(/sign in/i)
+    await expect(sdk.ai.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(/sign in/i)
+  })
+})
+
 describe('kernel.getUser', () => {
   it('returns anonymous sentinel when signed out', async () => {
     const sdk = makeClient()
