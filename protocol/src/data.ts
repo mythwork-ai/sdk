@@ -162,6 +162,9 @@ export interface AppSummary {
   alias: string
   name: string
   tagline: string
+  /** The app's published top-level package.json `description`; `null` when the
+   *  app has none. Always present (matches the platform AppSummaryDTO). */
+  description: string | null
   maker: MakerRef
   tags: string[]
   launches: number

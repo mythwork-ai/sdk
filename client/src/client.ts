@@ -110,6 +110,12 @@ export class MythworkClient {
     /** Batch-read project display names. Wire: `project.getNames`. */
     getNames: (params: MethodParams<'project.getNames'>, opts?: RequestOptions) =>
       this.request('project.getNames', params, opts),
+    /** Read a project's description. Wire: `project.getDescription`. */
+    getDescription: (params: MethodParams<'project.getDescription'>, opts?: RequestOptions) =>
+      this.request('project.getDescription', params, opts),
+    /** Set a project's description (backs the top-level package.json `description`). Wire: `project.setDescription`. */
+    setDescription: (params: MethodParams<'project.setDescription'>, opts?: RequestOptions) =>
+      this.request('project.setDescription', params, opts),
     /** Toggle public collaboration on a project. Wire: `project.setPublicCollab`. */
     setPublicCollab: (params: MethodParams<'project.setPublicCollab'>, opts?: RequestOptions) =>
       this.request('project.setPublicCollab', params, opts),
@@ -133,6 +139,9 @@ export class MythworkClient {
     /** Subscribe to project display-name changes. Wire event: `project.namesChanged`. */
     onNamesChanged: (handler: EventHandler<'project.namesChanged'>) =>
       this.subscribe('project.namesChanged', handler),
+    /** Subscribe to project description changes. Wire event: `project.descriptionChanged`. */
+    onDescriptionChanged: (handler: EventHandler<'project.descriptionChanged'>) =>
+      this.subscribe('project.descriptionChanged', handler),
   }
 
   // ── fs.* file ops ─────────────────────────────────────────────────────────
@@ -465,7 +474,7 @@ export class MythworkClient {
     addComment: (params: MethodParams<'explore.addComment'>, opts?: RequestOptions) =>
       this.request('explore.addComment', params, opts),
     /**
-     * @experimental Draft — not yet served. Owner-update an app's editable
+     * @experimental — API may still evolve before 1.0. Owner-update an app's editable
      * metadata (`name`/`tagline`/`note`); the override layers over the
      * publish-derived fields and survives republish. Owner-gated; signed-out
      * resolves `{ ok: false, reason: 'sign_in_required' }`.
@@ -474,7 +483,7 @@ export class MythworkClient {
     updateAppMeta: (params: MethodParams<'explore.updateAppMeta'>, opts?: RequestOptions) =>
       this.request('explore.updateAppMeta', params, opts),
     /**
-     * @experimental Draft — not yet served. Owner-unpublish the app at the
+     * @experimental — API may still evolve before 1.0. Owner-unpublish the app at the
      * canonical `projectId`. Reversible: removes the published site without
      * deleting the project. Owner-gated; signed-out resolves
      * `{ ok: false, reason: 'sign_in_required' }`.
@@ -483,7 +492,7 @@ export class MythworkClient {
     unpublish: (params: MethodParams<'explore.unpublish'>, opts?: RequestOptions) =>
       this.request('explore.unpublish', params, opts),
     /**
-     * @experimental Draft — not yet served. Owner-delete the app at the
+     * @experimental — API may still evolve before 1.0. Owner-delete the app at the
      * canonical `projectId`: unpublishes then soft-deletes the project row.
      * Owner-gated; if the unpublish step hard-fails, the project row is NOT
      * deleted (no half-delete). Signed-out resolves

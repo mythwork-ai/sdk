@@ -106,6 +106,8 @@ without authentication. "Auth-gated" means the host requires a signed-in session
 | `project.rename` | `{ pid: string; newName: string }` | `Ok` | Updates on-disk config + name cache |
 | `project.getName` | `{ pid: string }` | `{ name: string \| null }` | Cached display name; `null` if config not yet on disk |
 | `project.getNames` | `{ pids: string[] }` | `{ names: Record<string, string \| null> }` | Batch version of `project.getName` |
+| `project.getDescription` | `{ pid: string }` | `{ description: string \| null }` | Cached top-level package.json `description`; `null` when unset or config not yet on disk |
+| `project.setDescription` | `{ pid: string; description: string }` | `Ok` | Sets the top-level package.json `description` (empty string clears it); indexed for search on next publish |
 | `project.setPublicCollab` | `{ pid: string; enabled: boolean }` | `{ projectId: string; publicCollab: boolean }` | Auth-gated; local-only/anonymous project rejects |
 
 ### fs.* — file operations
@@ -225,6 +227,7 @@ the `type` field.
 | `project.lifecycle` | `{ kind: 'project:opened' \| 'project:closed' \| 'project:created' \| 'project:deleted'; pid: string }` or `{ kind: 'project:renamed'; pid: string; newName: string }` or `{ kind: 'project:leader-changed'; pid: string }` | Project lifecycle transition; `newName` present only on `'project:renamed'` |
 | `project.associated` | `{ pid: string; projectId: string }` | Local-only project gained a canonical id; app can upgrade its URL |
 | `project.namesChanged` | `{ pid: string; name: string \| null }` | Display name updated (e.g. via collab sync); `null` when config transiently yields no name |
+| `project.descriptionChanged` | `{ pid: string; description: string \| null }` | Top-level package.json `description` updated (e.g. via collab sync or `project.setDescription`); `null` when unset |
 | `db.change` | `{ store: string; key: string; value: unknown; deleted: boolean }` | @internal Key-value store entry changed; `value` is `null` and `deleted` is `true` on delete |
 | `kernel.authChanged` | `{ user: User }` | Auth state changed (sign-in, sign-out, identity update) |
 | `publish.progress` | `{ pid: string; state: 'publishing' \| 'published' \| 'error'; canonical?: string; alias?: string \| null; error?: string }` | Coarse publish progress for a `publish.run`; `canonical`/`alias` set on `'published'`; `error` set on `'error'` |
@@ -320,7 +323,7 @@ Conventions for this surface:
 | Type | Description |
 |---|---|
 | `MakerRef` | `{ handle: string; displayName: string }` — lightweight maker reference embedded in app/comment rows |
-| `AppSummary` | `{ projectId, alias, name, tagline, maker: MakerRef, tags: string[], launches, publishedAt, theme?, badge?, editorsChoice, rating: { average, count }, trendPct?, favoritedByViewer? }` — one app in discovery lists; `favoritedByViewer` present only with a session |
+| `AppSummary` | `{ projectId, alias, name, tagline, description: string \| null, maker: MakerRef, tags: string[], launches, publishedAt, theme?, badge?, editorsChoice, rating: { average, count }, trendPct?, favoritedByViewer? }` — one app in discovery lists; `description` is the published top-level package.json `description` (`null` when none); `favoritedByViewer` present only with a session |
 | `AppDetail` | `AppSummary & { makersNote?: string; remixCount: number }` — full app detail from `explore.getApp` |
 | `MakerSummary` | `{ handle, displayName, picture?, bio?, location?, link?, appCount, totalLaunches, followedByViewer? }` — maker card; `followedByViewer` present only with a session |
 | `SpotlightItem` | `{ projectId, kicker, headline, blurb }` — the editorial spotlight slot |

@@ -71,6 +71,34 @@ describe('dev host — single-client project/fs/git', () => {
     expect(names['unknown-pid']).toBeNull() // unknown pid → null
   })
 
+  it('description defaults to null; setDescription → getDescription round-trips', async () => {
+    const { pid } = await sdk.project.create({ projectName: 'desc demo' })
+    expect((await sdk.project.getDescription({ pid })).description).toBeNull() // unset → null
+    await sdk.project.setDescription({ pid, description: 'a tidy little app' })
+    expect((await sdk.project.getDescription({ pid })).description).toBe('a tidy little app')
+    // unknown pid → null
+    expect((await sdk.project.getDescription({ pid: 'unknown-pid' })).description).toBeNull()
+  })
+
+  it('setDescription with an empty string reads back as null', async () => {
+    const { pid } = await sdk.project.create({})
+    await sdk.project.setDescription({ pid, description: 'something' })
+    await sdk.project.setDescription({ pid, description: '' })
+    expect((await sdk.project.getDescription({ pid })).description).toBeNull()
+  })
+
+  it('setDescription pushes project.descriptionChanged to the editing client', async () => {
+    const { pid } = await sdk.project.create({ projectName: 'desc push' })
+    const seen: (string | null)[] = []
+    sdk.project.onDescriptionChanged(({ description }) => seen.push(description))
+    await sdk.project.setDescription({ pid, description: 'pushed value' })
+    await tick()
+    expect(seen).toContain('pushed value') // origin client observes its own change
+    await sdk.project.setDescription({ pid, description: '' })
+    await tick()
+    expect(seen).toContain(null) // empty-string → null, also pushed
+  })
+
   it('commitTree copies a source commit tree forward as a new commit (history grows)', async () => {
     const { pid } = await sdk.project.create({})
     await sdk.fs.write({ pid, path: '/index.html', bytes: enc.encode('<h1>v1</h1>') })

@@ -180,6 +180,8 @@ function ensureCommentList(state: DevState, projectId: string): CommentNode[] {
 interface DevProject {
   pid: string
   name: string
+  /** Top-level package.json `description`; `null` when unset. */
+  description: string | null
   files: Map<string, Uint8Array>
   /** Newest-first commit log. */
   commits: CommitInfo[]
@@ -206,6 +208,7 @@ function ensureProject(pid: string): DevProject {
     p = {
       pid,
       name: pid,
+      description: null,
       files: new Map(),
       commits: [],
       snapshots: new Map(),
@@ -228,6 +231,21 @@ function pushFsChanged(
   for (const port of project.subscribers) {
     if (port !== origin) port.postMessage(msg)
   }
+}
+
+/**
+ * Push `project.descriptionChanged` to every subscriber of `project`. Unlike
+ * `pushFsChanged`, the origin is NOT excluded: a description edit is a metadata
+ * change the editing client wants to observe too (so `onDescriptionChanged`
+ * fires on the same client that called `setDescription`).
+ */
+function pushDescriptionChanged(project: DevProject): void {
+  const msg: PushMessage = {
+    type: 'project.descriptionChanged',
+    pid: project.pid,
+    description: project.description,
+  }
+  for (const port of project.subscribers) port.postMessage(msg)
 }
 
 function devSha(project: DevProject): string {
@@ -702,6 +720,23 @@ const handlers: Record<string, Handler> = {
     const names: Record<string, string | null> = {}
     for (const pid of pids) names[pid] = projects.get(pid)?.name ?? null
     return { names }
+  },
+
+  'project.getDescription'(args) {
+    // Description is stored on the project (project.setDescription); null for an
+    // unknown pid or an unset description, mirroring the real host's "no
+    // description on disk yet" semantics.
+    return { description: projects.get(String(args['pid']))?.description ?? null }
+  },
+
+  'project.setDescription'(args, _state, ctx) {
+    const project = ensureProject(String(args['pid']))
+    project.subscribers.add(ctx.hostPort)
+    // Empty string reads back as null, mirroring getDescription's unset path.
+    project.description = (args['description'] as string) || null
+    // Notify subscribers (incl. the editing client) so onDescriptionChanged fires.
+    pushDescriptionChanged(project)
+    return { ok: true }
   },
 
   // ── fs (shared store; writes push fs.changed to other clients) ───────────────

@@ -101,6 +101,20 @@ export interface MethodMap {
     result: { names: Record<string, string | null> }
   }
   /**
+   * Read a project's top-level package.json `description` (cached). `null` when
+   * the app has no description or the config isn't on disk yet. Mirrors
+   * {@link MethodMap['project.getName']}.
+   */
+  'project.getDescription': { params: { pid: string }; result: { description: string | null } }
+  /**
+   * Set a project's top-level package.json `description` (the standard npm
+   * field, NOT the `mythwork` display block); the rest of package.json is
+   * preserved. An empty string clears it. The value is indexed for explore
+   * search on the next publish (the platform caps it at 4096 chars). Mirrors
+   * {@link MethodMap['project.rename']}. Wire: `project.setDescription`.
+   */
+  'project.setDescription': { params: { pid: string; description: string }; result: Ok }
+  /**
    * Toggle public collaboration on a project. Requires a signed-in session
    * (the host first ensures a canonical projectId, then calls the owner-only
    * setter); a local-only/anonymous project rejects.
@@ -526,8 +540,7 @@ export interface MethodMap {
     result: CommentNode | { ok: false; reason: string }
   }
   /**
-   * @experimental Draft surface — not yet served by deployed hosts (the api
-   * route + host bridge are in progress; myth-backend-api).
+   * @experimental — API may still evolve before 1.0.
    *
    * Owner-update an app's editable metadata for canonical `projectId`. The
    * fields are stored as an owner OVERRIDE that the read path layers OVER the
@@ -544,8 +557,7 @@ export interface MethodMap {
     result: AppDetail | { ok: false; reason: string }
   }
   /**
-   * @experimental Draft surface — not yet served by deployed hosts (explore
-   * backend in progress).
+   * @experimental — API may still evolve before 1.0.
    *
    * Owner-unpublish the app at the canonical `projectId`. Reversible: removes
    * the site from the publish worker without deleting the project. Owner-gated;
@@ -558,8 +570,7 @@ export interface MethodMap {
     result: Ok | { ok: false; reason: string }
   }
   /**
-   * @experimental Draft surface — not yet served by deployed hosts (explore
-   * backend in progress).
+   * @experimental — API may still evolve before 1.0.
    *
    * Owner-delete the app at the canonical `projectId`: unpublishes (as above)
    * then soft-deletes the project row. Owner-gated; posture gated-result — same

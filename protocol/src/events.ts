@@ -54,6 +54,13 @@ export interface EventMap {
   'project.namesChanged': { pid: string; name: string | null }
 
   /**
+   * A project's top-level package.json `description` changed (typically because
+   * collab sync delivered an updated config, or `project.setDescription` was
+   * called). `description` is `null` when unset. Mirrors `project.namesChanged`.
+   */
+  'project.descriptionChanged': { pid: string; description: string | null }
+
+  /**
    * @internal A key-value store entry changed (put or delete). Apps normally
    * observe this through the higher-level store helpers rather than subscribing
    * directly. On a delete, `value` is `null` and `deleted` is true.

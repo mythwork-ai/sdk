@@ -72,7 +72,7 @@ describe('namespaced helper → wire method mapping', () => {
       { pid: 'p', docName: 'd' },
     ],
     ['profile.get', () => client.profile.get({ handle: 'h' }), 'profile.get', { handle: 'h' }],
-    // Draft explore surface (not yet served by deployed hosts).
+    // explore surface wire-routing (project.remix below is still draft).
     [
       'explore.listApps',
       () => client.explore.listApps({ tags: ['game'], sort: 'new' }),
@@ -96,6 +96,18 @@ describe('namespaced helper → wire method mapping', () => {
       () => client.project.remix({ projectId: 'pid1' }),
       'project.remix',
       { projectId: 'pid1' },
+    ],
+    [
+      'project.getDescription',
+      () => client.project.getDescription({ pid: 'p' }),
+      'project.getDescription',
+      { pid: 'p' },
+    ],
+    [
+      'project.setDescription',
+      () => client.project.setDescription({ pid: 'p', description: 'd' }),
+      'project.setDescription',
+      { pid: 'p', description: 'd' },
     ],
     ['profile.me', () => client.profile.me(), 'profile.me', {}],
     [

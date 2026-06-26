@@ -79,6 +79,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_001',
     name: 'Carpool Autopilot',
     tagline: 'The carpool that just… runs itself.',
+    description:
+      'Watches every family calendar and auto-assigns the driver, then texts the whole group so nobody has to ask.',
     maker: { handle: 'devuser', displayName: 'Dev User' },
     tags: ['Automation', 'Family'],
     launches: 5_400_000,
@@ -93,6 +95,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_002',
     name: 'Duct Tape Killer',
     tagline: 'Stop being the glue between four tools.',
+    description:
+      'Automates the hand-offs between the four tools your workflow lives in, so you stop being the human integration layer.',
     maker: { handle: 'amara', displayName: 'Amara Okafor' },
     tags: ['Productivity', 'Workflow'],
     launches: 1_400_000,
@@ -107,6 +111,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_003',
     name: 'Remix Forge',
     tagline: 'Tools that grow your name while you sleep.',
+    description:
+      'Spins a single build into a family of remixable starting points so your best work keeps shipping itself.',
     maker: { handle: 'devuser', displayName: 'Dev User' },
     tags: ['Creator', 'Social'],
     launches: 482_300,
@@ -122,6 +128,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_004',
     name: 'Shipped This Week',
     tagline: 'What did I even ship this week?',
+    description:
+      'Pulls your commits, tickets, and shipped work into one honest end-of-week screen.',
     maker: { handle: 'priya', displayName: 'Priya Nair' },
     tags: ['Dashboard', 'Productivity'],
     launches: 309_000,
@@ -136,6 +144,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_005',
     name: 'Follow-up Fairy',
     tagline: 'The follow-ups you keep dropping, caught.',
+    description:
+      'Catches the follow-ups you forget and nudges you to send them before the deal goes cold.',
     maker: { handle: 'amara', displayName: 'Amara Okafor' },
     tags: ['Automation', 'Productivity'],
     launches: 223_800,
@@ -150,6 +160,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_006',
     name: 'Legend Engine',
     tagline: 'Become the one others remix.',
+    description:
+      'Turns the things you make into compounding, remixable building blocks that grow your reputation over time.',
     maker: { handle: 'leo', displayName: 'Leo Marsh' },
     tags: ['Creator', 'Social'],
     launches: 9_000_000,
@@ -165,6 +177,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_007',
     name: 'Spreadsheet Rescue',
     tagline: 'The spreadsheet held together with hope — fixed.',
+    // Intentionally null to exercise the unset-description path across reads.
+    description: null,
     maker: { handle: 'priya', displayName: 'Priya Nair' },
     tags: ['Productivity', 'Data'],
     launches: 181_200,
@@ -179,6 +193,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_008',
     name: 'Tonight Builder',
     tagline: 'It built itself tonight. You woke up to less.',
+    description:
+      'Describe what you want before bed and wake up to a working draft assembled overnight.',
     maker: { handle: 'devuser', displayName: 'Dev User' },
     tags: ['Automation', 'Workflow'],
     launches: 600_100,
@@ -193,6 +209,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_009',
     name: 'Remix Gallery',
     tagline: 'Fork anything. Make it yours.',
+    description:
+      'Makes every published app a one-click starting point you can fork, reshape, and make your own.',
     maker: { handle: 'leo', displayName: 'Leo Marsh' },
     tags: ['Creator', 'Social'],
     launches: 441_500,
@@ -207,6 +225,8 @@ export const SEED_APPS: AppSummary[] = [
     alias: 'app_dev_010',
     name: 'Surprise Me',
     tagline: "Bold. Let's see what you make.",
+    description:
+      'Takes a one-line "surprise me" brief and generates an unexpected, fully built app to riff on.',
     maker: { handle: 'kai', displayName: 'Kai Mori' },
     tags: ['Creator', 'Data'],
     launches: 88_000,
