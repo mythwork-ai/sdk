@@ -473,6 +473,25 @@ export class MythworkClient {
      */
     updateAppMeta: (params: MethodParams<'explore.updateAppMeta'>, opts?: RequestOptions) =>
       this.request('explore.updateAppMeta', params, opts),
+    /**
+     * @experimental Draft — not yet served. Owner-unpublish the app at the
+     * canonical `projectId`. Reversible: removes the published site without
+     * deleting the project. Owner-gated; signed-out resolves
+     * `{ ok: false, reason: 'sign_in_required' }`.
+     * Wire: `explore.unpublish`.
+     */
+    unpublish: (params: MethodParams<'explore.unpublish'>, opts?: RequestOptions) =>
+      this.request('explore.unpublish', params, opts),
+    /**
+     * @experimental Draft — not yet served. Owner-delete the app at the
+     * canonical `projectId`: unpublishes then soft-deletes the project row.
+     * Owner-gated; if the unpublish step hard-fails, the project row is NOT
+     * deleted (no half-delete). Signed-out resolves
+     * `{ ok: false, reason: 'sign_in_required' }`.
+     * Wire: `explore.deleteApp`.
+     */
+    deleteApp: (params: MethodParams<'explore.deleteApp'>, opts?: RequestOptions) =>
+      this.request('explore.deleteApp', params, opts),
   }
 
   // ── ai.* (mythwork-ai proxy) ──────────────────────────────────────────────

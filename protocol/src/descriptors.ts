@@ -156,6 +156,17 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     http: { verb: 'PATCH', path: '/explore/apps/:projectId' },
     auth: { signedOut: 'result', onError: 'result' },
   },
+  // Owner-lifecycle actions — reversible unpublish and permanent soft-delete.
+  // Gated-result on BOTH axes: signed-out resolves { ok:false } with ZERO
+  // network; a non-owner / unknown projectId → { ok:false, reason:'forbidden' }.
+  'explore.unpublish': {
+    http: { verb: 'POST', path: '/explore/apps/:projectId/unpublish' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  'explore.deleteApp': {
+    http: { verb: 'POST', path: '/explore/apps/:projectId/delete' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
 
   // ── profile.* ────────────────────────────────────────────────────────────
   // submitClaim + me: no-token → { ok:false } ZERO network, a stale 401 + a 4xx

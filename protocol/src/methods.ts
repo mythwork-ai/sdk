@@ -543,6 +543,34 @@ export interface MethodMap {
     params: { projectId: string; name?: string; tagline?: string; note?: string }
     result: AppDetail | { ok: false; reason: string }
   }
+  /**
+   * @experimental Draft surface — not yet served by deployed hosts (explore
+   * backend in progress).
+   *
+   * Owner-unpublish the app at the canonical `projectId`. Reversible: removes
+   * the site from the publish worker without deleting the project. Owner-gated;
+   * posture gated-result — signed-out resolves `{ ok: false, reason:
+   * 'sign_in_required' }` with ZERO network; a non-owner or unknown projectId →
+   * `{ ok: false, reason: 'forbidden' }`. Backing: publish worker DELETE proxy.
+   */
+  'explore.unpublish': {
+    params: { projectId: string }
+    result: Ok | { ok: false; reason: string }
+  }
+  /**
+   * @experimental Draft surface — not yet served by deployed hosts (explore
+   * backend in progress).
+   *
+   * Owner-delete the app at the canonical `projectId`: unpublishes (as above)
+   * then soft-deletes the project row. Owner-gated; posture gated-result — same
+   * as `explore.unpublish`. If the unpublish step hard-fails, the project row is
+   * NOT deleted (no half-delete). Backing: publish worker DELETE proxy +
+   * projects D1 softDelete.
+   */
+  'explore.deleteApp': {
+    params: { projectId: string }
+    result: Ok | { ok: false; reason: string }
+  }
 
   // ── profile.* (additions) ───────────────────────────────────────────────
   // @experimental — API may still evolve before 1.0. These extend the
