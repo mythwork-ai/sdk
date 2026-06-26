@@ -598,6 +598,7 @@ const handlers: Record<string, Handler> = {
           approved: false,
           approvedAt: null,
           acceptedAt: null,
+          inviteCodeHash: null,
         },
       }
       state.profileFields = { bio: '', location: '', link: '' }
@@ -616,6 +617,7 @@ const handlers: Record<string, Handler> = {
         approved: true,
         approvedAt: '2024-01-01T00:00:00.000Z',
         acceptedAt: '2024-01-01T00:00:00.000Z',
+        inviteCodeHash: null,
       },
     }
     // Seed the editable fields from the maker so profile.me shows the seed

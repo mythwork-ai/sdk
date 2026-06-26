@@ -23,8 +23,9 @@
 /**
  * The user identity delivered over the auth-iframe bridge — the `/google` +
  * `/google/callback` response user (and, on a returning load, the Bearer-authed
- * `/me` record). Matches `PublicUser` (workers/api routes/auth/google.ts) and
- * the reference consumer's `AuthUser` (packages/host-iframe/src/auth.ts).
+ * `/me` record). Matches the shape returned by `publicUser` (workers/api
+ * common/access.ts) and the reference consumer's `AuthUser`
+ * (packages/host-iframe/src/auth.ts).
  * Distinct from the protocol's host-RPC `User` union (`kernel.getUser`); this
  * is the auth-bridge wire shape.
  */

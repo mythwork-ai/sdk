@@ -4,11 +4,14 @@
 
 /** Product-approval state for a signed-in user (Approval Status API).
  *  `approved` is the only field the nav strictly needs; timestamps are for
- *  the acceptance funnel. ISO-8601 strings; null until the event occurs. */
+ *  the acceptance funnel. ISO-8601 strings; null until the event occurs.
+ *  `inviteCodeHash` is the SHA-256 of the server-derived invite code, present
+ *  only for approved-but-not-yet-accepted users (null otherwise). */
 export interface UserAccess {
   approved: boolean
   approvedAt: string | null
   acceptedAt: string | null
+  inviteCodeHash: string | null
 }
 
 /**
