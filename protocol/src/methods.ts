@@ -39,9 +39,8 @@ import type {
  * bridge forwards them verbatim); `maxTokens` is the only camelCase rename
  * (→ `max_tokens`) so the app surface reads idiomatically.
  */
-export interface AiOpts {
+interface AiOptsBase {
   model?: string
-  system?: string
   maxTokens?: number
   temperature?: number
   topP?: number
@@ -51,6 +50,21 @@ export interface AiOpts {
   // client-only; presence enables streaming (never serialized to the wire)
   onChunk?: (delta: string) => void
 }
+
+/**
+ * @experimental Shared `opts` for the `ai.*` methods. The system-prompt slot is
+ * filled EITHER by an inline `system` string OR by a `systemPreset` name (a
+ * server-stored preset resolved to `system` bridge-side) — never both. The
+ * `?: never` arms make a both-fields object a type error; the bridge also
+ * throws at runtime as a backstop for plain-JS callers.
+ *
+ * There is no `projectId` field: a `systemPreset` resolves against the running
+ * app's OWN project, whose canonical id the host frame derives from its trusted
+ * current-project context (never a client arg — Correction A / security).
+ */
+export type AiOpts =
+  | (AiOptsBase & { system?: string; systemPreset?: never })
+  | (AiOptsBase & { system?: never; systemPreset?: string })
 
 /**
  * Result of the profile mutations: the host either returns the server JSON on
@@ -710,6 +724,22 @@ export interface MethodMap {
    */
   'project.remix': { params: { projectId: string }; result: ProjectInfo }
 
+  // ── prompts.* ─────────────────────────────────────────────────────────────
+  // Server-stored system-prompt presets (AI-SDK Layer 1). Authoring is
+  // HTTP-only (PUT /prompts/{projectId}); the client surface is names-only.
+
+  /**
+   * @experimental List prompt-preset NAMES for the current project (never
+   * text). The projectId is derived host-side from the trusted current-project
+   * context — there are NO client params (Correction A / security). Gated-result
+   * posture: signed-out resolves `{ ok: false, reason: 'sign_in_required' }`
+   * with ZERO network. Backing: project_prompts D1 (GET /prompts/:projectId).
+   */
+  'prompts.list': {
+    params: Record<string, never>
+    result: { names: string[] } | { ok: false; reason: string }
+  }
+
   // ── ai.* (mythwork-ai proxy) ────────────────────────────────────────────
   // @experimental — API may still evolve before 1.0. The app-facing surface of
   // the `mythwork-ai` proxy (PR #382): an OpenAI-compatible chat-completions
@@ -743,6 +773,9 @@ export interface MethodMap {
       messages: ChatMessage[]
       model?: string
       system?: string
+      // Resolved to `system` bridge-side against the host's current project;
+      // never reaches the mythwork-ai worker. Mutually exclusive with `system`.
+      systemPreset?: string
       max_tokens?: number
       temperature?: number
       top_p?: number
@@ -766,6 +799,9 @@ export interface MethodMap {
       prompt: string
       model?: string
       system?: string
+      // Resolved to `system` bridge-side against the host's current project;
+      // never reaches the mythwork-ai worker. Mutually exclusive with `system`.
+      systemPreset?: string
       max_tokens?: number
       temperature?: number
       top_p?: number

@@ -63,6 +63,8 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
     // worker: no token → throw, a non-2xx (incl. 402/429) → throw.
     expect(auth('ai.chat')).toEqual({ signedOut: 'throw', onError: 'throw' })
     expect(auth('ai.complete')).toEqual({ signedOut: 'throw', onError: 'throw' })
+    // prompts.list — names-only read, gated-result on both axes.
+    expect(auth('prompts.list')).toEqual({ signedOut: 'result', onError: 'result' })
   })
 
   it('binds ai.* to the single-endpoint worker root via POST', () => {

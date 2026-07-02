@@ -12,7 +12,7 @@ The SDK is two lockstep-versioned packages that publish together:
 
 | Package | Role | Runtime code |
 |---|---|---|
-| [`@mythwork/protocol`](./protocol/) | Wire spec: envelope types, handshake constants, `MethodMap` (all 49 RPC methods), `EventMap` (all 7 push events), and the pure data types they reference (`User`, `CommitInfo`, `DiffEntry`, …). | Constants only (message-type strings, `PROTOCOL_VERSION`). Zero dependencies. |
+| [`@mythwork/protocol`](./protocol/) | Wire spec: envelope types, handshake constants, `MethodMap` (every RPC method), `EventMap` (every push event), and the pure data types they reference (`User`, `CommitInfo`, `DiffEntry`, …). | Constants only (message-type strings, `PROTOCOL_VERSION`). Zero dependencies. |
 | [`@mythwork/sdk`](./client/) | Client: port acquisition (handshake), `MythworkClient.request()` typed against `MethodMap`, `MythworkClient.subscribe()` typed against `EventMap`, and thin namespaced helpers (`sdk.fs.read`, `sdk.auth.getUser`, …). | Small; depends only on `@mythwork/protocol`. |
 
 `@mythwork/sdk` re-exports everything from `@mythwork/protocol`, so most callers
@@ -48,7 +48,3 @@ repo.
 
 Full rationale, wire compatibility notes, and implementation phases:
 [`docs/superpowers/specs/2026-06-11-mythwork-sdk-design.md`](../docs/superpowers/specs/2026-06-11-mythwork-sdk-design.md)
-
-## Versions
-
-Current: `0.5.0` (both packages move in lockstep). 0.5.0 adds opt-in AI streaming (`ai.complete`/`ai.chat` `onChunk`), `AbortSignal` request cancellation, and the `useCompletion` React hook.

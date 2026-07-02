@@ -307,6 +307,21 @@ export class MythworkClient {
       this.request('config.get', params, opts),
   }
 
+  // ── prompts.* ─────────────────────────────────────────────────────────────
+  /**
+   * @experimental Server-stored system-prompt presets. Reference a preset by
+   * name via `ai.*` `{ systemPreset }`; author presets out-of-band with
+   * `PUT /prompts/{projectId}` (HTTP-only — there is no `prompts.set`).
+   */
+  readonly prompts = {
+    /**
+     * List preset NAMES for the current project (names only — never text). The
+     * host derives the projectId from its trusted current-project context, so
+     * this takes no params. Wire: `prompts.list`.
+     */
+    list: (opts?: RequestOptions) => this.request('prompts.list', {}, opts),
+  }
+
   // ── profile.* ─────────────────────────────────────────────────────────────
   /** Creator-profile reads and consent-gated mutations. Maps to `profile.*`. */
   readonly profile = {
@@ -521,6 +536,11 @@ export class MythworkClient {
    * are delivered as they arrive (via correlated `ai.delta` pushes) while the
    * call still resolves the full assistant message/text at the end. Without
    * `onChunk` the call is buffered (a single reply), unchanged.
+   *
+   * Pass `{ systemPreset }` instead of `system` to reference a server-stored
+   * preset (resolved to the outbound `system` bridge-side against the app's own
+   * project) whose text never enters the bundle; `system` and `systemPreset`
+   * are mutually exclusive.
    */
   readonly ai = {
     /**
@@ -596,6 +616,9 @@ function aiWireOpts(opts?: AiOpts): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   if (opts.model !== undefined) out.model = opts.model
   if (opts.system !== undefined) out.system = opts.system
+  // Preset name resolved to `system` bridge-side against the host's current
+  // project. No `projectId` is ever sent — the host derives it (Correction A).
+  if (opts.systemPreset !== undefined) out.systemPreset = opts.systemPreset
   if (opts.maxTokens !== undefined) out.max_tokens = opts.maxTokens
   if (opts.temperature !== undefined) out.temperature = opts.temperature
   if (opts.topP !== undefined) out.top_p = opts.topP

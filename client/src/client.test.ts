@@ -348,6 +348,56 @@ describe('ai namespace (mythwork-ai proxy)', () => {
     expect(chunks).toEqual(['hello ', 'world'])
     expect(msg).toEqual({ role: 'assistant', content: 'hi there' })
   })
+
+  it('ai.complete forwards systemPreset on the wire (never system, never projectId)', async () => {
+    await client.ai.complete('hi', { systemPreset: 'project_plan' })
+    expect(outbound[0]!.method).toBe('ai.complete')
+    expect(outbound[0]!.args).toMatchObject({ prompt: 'hi', systemPreset: 'project_plan' })
+    // Correction A: the client never sends a projectId; the host derives it.
+    expect(outbound[0]!.args).not.toHaveProperty('projectId')
+    // Mutually exclusive with system — only the preset name goes over the wire.
+    expect(outbound[0]!.args).not.toHaveProperty('system')
+  })
+
+  it('ai.chat forwards systemPreset on the wire', async () => {
+    await client.ai.chat([{ role: 'user', content: 'hi' }], { systemPreset: 'project_plan' })
+    expect(outbound[0]!.args).toMatchObject({
+      messages: [{ role: 'user', content: 'hi' }],
+      systemPreset: 'project_plan',
+    })
+    expect(outbound[0]!.args).not.toHaveProperty('projectId')
+  })
+})
+
+describe('prompts.list namespace', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+  let outbound: { id: string; method: string; args: Record<string, unknown> }[]
+
+  beforeEach(() => {
+    chan = new MessageChannel()
+    outbound = []
+    chan.port2.start()
+    chan.port2.addEventListener('message', e => {
+      const d = e.data as { id: string; method: string; args: Record<string, unknown> }
+      outbound.push(d)
+      chan.port2.postMessage({ id: d.id, result: { names: ['project_plan'] } })
+    })
+    client = new MythworkClient(chan.port1)
+  })
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+  })
+
+  it('forwards to the prompts.list wire method with no client params', async () => {
+    const res = await client.prompts.list()
+    expect(outbound).toHaveLength(1)
+    expect(outbound[0]!.method).toBe('prompts.list')
+    // Correction A: no projectId — the host derives it from its trusted context.
+    expect(outbound[0]!.args).toEqual({})
+    expect(res).toEqual({ names: ['project_plan'] })
+  })
 })
 
 describe('event helpers route to the right push prefix', () => {

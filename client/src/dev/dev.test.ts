@@ -917,3 +917,20 @@ describe('explore.updateAppMeta — override reflects across all reads (no card�
     sdk.port.close()
   })
 })
+
+describe('dev host — prompt presets', () => {
+  it('ai.complete echoes systemPreset so dev mode does not break', async () => {
+    const sdk = await connect({ dev: { firstParty: true } })
+    const text = await sdk.ai.complete('hello', { systemPreset: 'project_plan' })
+    expect(text).toContain('project_plan')
+    expect(text).toContain('hello')
+    sdk.port.close()
+  })
+
+  it('prompts.list resolves to { names: [] } in dev', async () => {
+    const sdk = await connect({ dev: true })
+    const res = await sdk.prompts.list()
+    expect(res).toEqual({ names: [] })
+    sdk.port.close()
+  })
+})

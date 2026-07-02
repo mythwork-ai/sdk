@@ -672,13 +672,20 @@ const handlers: Record<string, Handler> = {
     const messages = (args['messages'] as { role?: string; content?: unknown }[]) ?? []
     const lastUser = [...messages].reverse().find(m => m.role === 'user')
     const echo = typeof lastUser?.content === 'string' ? lastUser.content : ''
-    return devCompletion(`(dev) ${echo}`, args['model'] as string | undefined)
+    const preset = typeof args.systemPreset === 'string' ? ` [preset:${args.systemPreset}]` : ''
+    return devCompletion(`(dev)${preset} ${echo}`, args['model'] as string | undefined)
   },
 
   'ai.complete'(args, state) {
     if (!state.firstParty && state.user.kind === 'anonymous') throw new Error('sign in required')
     const prompt = typeof args['prompt'] === 'string' ? (args['prompt'] as string) : ''
-    return devCompletion(`(dev) ${prompt}`, args['model'] as string | undefined)
+    const preset = typeof args.systemPreset === 'string' ? ` [preset:${args.systemPreset}]` : ''
+    return devCompletion(`(dev)${preset} ${prompt}`, args['model'] as string | undefined)
+  },
+
+  // ── prompts (server-stored presets; dev has no store) ────────────────────────
+  'prompts.list'() {
+    return { names: [] as string[] }
   },
 
   // ── project (shared store) ───────────────────────────────────────────────────

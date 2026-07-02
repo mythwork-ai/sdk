@@ -207,6 +207,16 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     auth: { signedOut: 'throw', onError: 'throw' },
   },
 
+  // ── prompts.* ────────────────────────────────────────────────────────────
+  // Names-only read of a project's prompt presets. Gated-result on both axes:
+  // signed-out → { ok:false } with ZERO network; a 4xx → { ok:false, reason }.
+  // The :projectId in the path is filled host-side from the trusted current
+  // project (Correction A) — the client sends no projectId.
+  'prompts.list': {
+    http: { verb: 'GET', path: '/prompts/:projectId' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+
   // ── ai.* ───────────────────────────────────────────────────────────────────
   // The ONE exception to "every entry binds to the api worker": the `ai.*`
   // methods POST to the SEPARATE `mythwork-ai` worker origin (ai.{zone}),
