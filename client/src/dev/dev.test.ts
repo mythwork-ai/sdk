@@ -378,6 +378,28 @@ describe('ai.* streaming (onChunk dev host)', () => {
   })
 })
 
+describe('nav.topLevel (first-party-gated dev mock)', () => {
+  it('rejects for a non-first-party dev host', async () => {
+    const sdk = await connect({ dev: true })
+    await expect(sdk.nav.topLevel({ target: 'explore' })).rejects.toThrow(/first-party/i)
+    sdk.port.close()
+  })
+
+  it('resolves { ok: true } for a first-party dev host (no real navigation)', async () => {
+    const sdk = await connect({ dev: { firstParty: true } })
+    await expect(sdk.nav.topLevel({ target: 'explore' })).resolves.toEqual({ ok: true })
+    sdk.port.close()
+  })
+
+  it('rejects an unrecognized target even in first-party mode', async () => {
+    const sdk = await connect({ dev: { firstParty: true } })
+    await expect(sdk.nav.topLevel({ target: 'bogus' as unknown as 'explore' })).rejects.toThrow(
+      /unknown target/i,
+    )
+    sdk.port.close()
+  })
+})
+
 describe('kernel.getUser', () => {
   it('returns anonymous sentinel when signed out', async () => {
     const sdk = makeClient()

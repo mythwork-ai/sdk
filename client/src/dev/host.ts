@@ -32,8 +32,10 @@
 //     simulates an allowlisted/first-party app — anonymous ai.chat/ai.complete
 //     RESOLVE (to a devCompletion echo) instead of throwing 'sign in required',
 //     mirroring the production first-party token. Symmetric opt-out to the
-//     default non-allowlisted throw. Scoped to ai.* ONLY: profile writes still
-//     throw when signed out, faithful to production (the token authorizes ai.*).
+//     default non-allowlisted throw. Also gates nav.topLevel (first-party apps
+//     only, mirroring isFirstPartyApp() in the real host-iframe bridge).
+//     Scoped to ai.*/nav.* ONLY: profile writes still throw when signed out,
+//     faithful to production (the token authorizes ai.*/nav.*, nothing else).
 //   - kernel.signIn/signOut: respond then emit kernel.authChanged push.
 //   - Unknown method: { id, error: 'Unknown method: <m>' } (never hangs).
 
@@ -862,6 +864,21 @@ const handlers: Record<string, Handler> = {
     return bytes
   },
 
+  // ── nav ──────────────────────────────────────────────────────────────────────
+
+  'nav.topLevel'(args, state) {
+    // Mirrors packages/host-iframe/src/bridges/nav.ts: first-party apps only,
+    // and only the closed `target` enum is accepted.
+    if (!state.firstParty) throw new Error('nav.topLevel: first-party apps only')
+    const target = String(args['target'] ?? 'explore')
+    if (target !== 'explore') throw new Error(`nav.topLevel: unknown target '${target}'`)
+    // Unlike production, do NOT assign window.location.href here: there's no
+    // real explore.{zone} to navigate to during local dev (redirecting off
+    // localhost would break the dev loop), and jsdom-based tests would throw
+    // "Not implemented: navigation" if we tried. Just report success.
+    return { ok: true }
+  },
+
   // ── collab ───────────────────────────────────────────────────────────────────
 
   'collab.openRoom'(args) {
@@ -900,7 +917,8 @@ const handlers: Record<string, Handler> = {
  * flow in dev. Pass `opts.firstParty` to simulate an allowlisted/first-party
  * app so anonymous `ai.chat`/`ai.complete` resolve instead of throwing
  * `'sign in required'` — mirroring the production first-party token (e.g.
- * myth-landing's signed-out hero planner).
+ * myth-landing's signed-out hero planner) — and so `nav.topLevel` resolves
+ * instead of throwing `'first-party apps only'`.
  *
  * @example
  * ```ts

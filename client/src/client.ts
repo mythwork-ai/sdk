@@ -573,6 +573,17 @@ export class MythworkClient {
       return typeof content === 'string' ? content : ''
     },
   }
+
+  // ── nav.* ─────────────────────────────────────────────────────────────────
+  /** Host-mediated top-level browser navigation. Maps to `nav.*`. */
+  readonly nav = {
+    /** Host-mediated top-level browser navigation. First-party apps only —
+     *  throws for other callers. Wire: `nav.topLevel`. */
+    topLevel: (
+      params: MethodParams<'nav.topLevel'> = { target: 'explore' },
+      opts?: RequestOptions,
+    ) => this.request('nav.topLevel', params, opts),
+  }
 }
 
 /**

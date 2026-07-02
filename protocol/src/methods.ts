@@ -776,6 +776,18 @@ export interface MethodMap {
     }
     result: ChatCompletion
   }
+
+  // ── nav.* ───────────────────────────────────────────────────────────────
+
+  /**
+   * Host-mediated top-level browser navigation, first-party apps only (the
+   * host throws for any other caller). Takes no app-supplied URL — only the
+   * closed `target` enum — so the host alone resolves the actual destination
+   * (via `mythworkZone()`), leaving no channel for a caller to smuggle data
+   * into a redirect. Lets a first-party app (e.g. myth-ide) escape a
+   * sandboxed iframe with no top-navigation grant to reach `explore.{zone}`.
+   */
+  'nav.topLevel': { params: { target: 'explore' }; result: Ok }
 }
 
 /** Every valid wire method string. */
