@@ -85,6 +85,14 @@ export interface EventMap {
     alias?: string | null
     error?: string
   }
+
+  /**
+   * A streaming text delta from an `ai.chat` or `ai.complete` call made with
+   * `stream: true`. Correlated by `requestId` (matches the in-flight RPC id).
+   * Deltas are NOT routed through `subscribe()` / `PushRouter` — the streaming
+   * layer installs its own `requestId`-filtered listener directly.
+   */
+  'ai.delta': { requestId: string; delta: string }
 }
 
 /** Every valid push-event `type` string. */

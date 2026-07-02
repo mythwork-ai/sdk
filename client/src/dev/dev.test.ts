@@ -342,6 +342,42 @@ describe('ai.* firstParty mode (anonymous allowlisted-app simulation)', () => {
   })
 })
 
+describe('ai.* streaming (onChunk dev host)', () => {
+  it('ai.complete with onChunk fires ≥1 delta and concat equals the resolved text', async () => {
+    const sdk = await connect({ dev: { firstParty: true } })
+    const chunks: string[] = []
+    const text = await sdk.ai.complete('hi', { onChunk: d => chunks.push(d) })
+    expect(chunks.length).toBeGreaterThanOrEqual(1)
+    expect(chunks.join('')).toBe(text)
+    sdk.port.close()
+  })
+
+  it('ai.complete without onChunk still returns the full text (non-streaming path)', async () => {
+    const sdk = await connect({ dev: { firstParty: true } })
+    const text = await sdk.ai.complete('hello world')
+    expect(typeof text).toBe('string')
+    expect(text).toContain('hello world')
+    sdk.port.close()
+  })
+
+  it('signed-out non-firstParty rejects even with onChunk (posture unchanged)', async () => {
+    const sdk = await connect({ dev: true })
+    await expect(sdk.ai.complete('hello', { onChunk: () => {} })).rejects.toThrow(/sign in/i)
+    sdk.port.close()
+  })
+
+  it('ai.chat with onChunk fires ≥1 delta and concat equals resolved content', async () => {
+    const sdk = await connect({ dev: { firstParty: true } })
+    const chunks: string[] = []
+    const msg = await sdk.ai.chat([{ role: 'user', content: 'hi' }], {
+      onChunk: d => chunks.push(d),
+    })
+    expect(chunks.length).toBeGreaterThanOrEqual(1)
+    expect(msg.content).toBe(chunks.join(''))
+    sdk.port.close()
+  })
+})
+
 describe('kernel.getUser', () => {
   it('returns anonymous sentinel when signed out', async () => {
     const sdk = makeClient()

@@ -48,6 +48,8 @@ export interface AiOpts {
   tools?: OpenAITool[]
   toolChoice?: unknown
   thinking?: boolean
+  // client-only; presence enables streaming (never serialized to the wire)
+  onChunk?: (delta: string) => void
 }
 
 /**
@@ -719,10 +721,12 @@ export interface MethodMap {
   // rate-limited) throws — posture `signedOut: 'throw', onError: 'throw'`
   // (the hard-gated "do it" action, like `profile.myFavorites`).
   //
-  // v1 is NON-streaming: `stream` is accepted on the wire but the bridge
-  // transport delivers a single reply (see TODO(stream) in the client). Both
-  // methods resolve the full normalized completion; the `@mythwork/sdk` `ai`
-  // namespace adds the `ai.complete → string` / `ai.chat → message`
+  // Streaming is opt-in via `stream: true` (the `@mythwork/sdk` `ai` namespace
+  // sets it when the caller passes `onChunk`): the bridge relays text deltas as
+  // correlated `ai.delta` pushes and still returns the full assembled
+  // completion as the terminal reply. Without `stream`, the bridge delivers a
+  // single buffered reply. Both resolve the full normalized completion; the
+  // `ai` namespace adds the `ai.complete → string` / `ai.chat → message`
   // conveniences on top.
 
   /**
@@ -745,6 +749,7 @@ export interface MethodMap {
       tools?: OpenAITool[]
       tool_choice?: unknown
       thinking?: boolean
+      stream?: boolean
     }
     result: ChatCompletion
   }
@@ -767,6 +772,7 @@ export interface MethodMap {
       tools?: OpenAITool[]
       tool_choice?: unknown
       thinking?: boolean
+      stream?: boolean
     }
     result: ChatCompletion
   }

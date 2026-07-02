@@ -51,4 +51,4 @@ Full rationale, wire compatibility notes, and implementation phases:
 
 ## Versions
 
-Current: `0.4.0` (both packages move in lockstep).
+Current: `0.5.0` (both packages move in lockstep). 0.5.0 adds opt-in AI streaming (`ai.complete`/`ai.chat` `onChunk`), `AbortSignal` request cancellation, and the `useCompletion` React hook.

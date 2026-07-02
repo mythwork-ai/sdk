@@ -338,9 +338,9 @@ export type OpenAITool = Record<string, unknown>
 /**
  * @experimental The OpenAI-compatible chat-completion request body the
  * `mythwork-ai` worker accepts. `model` defaults proxy-side when omitted;
- * `system` is a convenience the proxy folds into the message list; `stream` is
- * accepted by the worker but the bridge transport delivers a single
- * (non-streamed) reply for v1 (see `ai.chat` — TODO(stream)).
+ * `system` is a convenience the proxy folds into the message list; `stream:
+ * true` makes the bridge relay text deltas as correlated `ai.delta` pushes and
+ * still return the full assembled completion (see `ai.chat`).
  */
 export interface ChatCompletionRequest {
   model?: string

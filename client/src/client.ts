@@ -18,7 +18,13 @@ import type {
   MethodParams,
   MethodResult,
 } from '@mythwork/protocol'
-import { type PushHandler, PushRouter, type RequestOptions, requestOverPort } from './transport'
+import {
+  type PushHandler,
+  PushRouter,
+  type RequestOptions,
+  requestOverPort,
+  streamOverPort,
+} from './transport'
 
 /**
  * A subscription target: either a full event `type` (e.g. `'fs.changed'`) for an
@@ -511,9 +517,10 @@ export class MythworkClient {
    * stale token, out of credits (`'… out of credits'`), or rate-limited
    * (`'… rate limited'`). Maps to `ai.chat` / `ai.complete`.
    *
-   * v1 is NON-streaming — `ai.chat` resolves the full assistant message rather
-   * than an async iterable of deltas. TODO(stream): a streaming variant is a
-   * fast-follow once the bridge transport carries correlated chunk pushes.
+   * Streaming is opt-in: pass `onChunk(delta)` in the options and text deltas
+   * are delivered as they arrive (via correlated `ai.delta` pushes) while the
+   * call still resolves the full assistant message/text at the end. Without
+   * `onChunk` the call is buffered (a single reply), unchanged.
    */
   readonly ai = {
     /**
@@ -525,6 +532,15 @@ export class MythworkClient {
       opts?: AiOpts,
       reqOpts?: RequestOptions,
     ): Promise<ChatMessage> => {
+      if (opts?.onChunk) {
+        const completion = await streamOverPort<ChatCompletion>(
+          this.port,
+          'ai.chat',
+          { messages, ...aiWireOpts(opts) } as MethodParams<'ai.chat'>,
+          { ...reqOpts, onChunk: opts.onChunk },
+        )
+        return assistantMessage(completion)
+      }
       const completion = await this.request(
         'ai.chat',
         { messages, ...aiWireOpts(opts) } as MethodParams<'ai.chat'>,
@@ -538,6 +554,16 @@ export class MythworkClient {
      * knobs. Wire: `ai.complete`.
      */
     complete: async (prompt: string, opts?: AiOpts, reqOpts?: RequestOptions): Promise<string> => {
+      if (opts?.onChunk) {
+        const completion = await streamOverPort<ChatCompletion>(
+          this.port,
+          'ai.complete',
+          { prompt, ...aiWireOpts(opts) } as MethodParams<'ai.complete'>,
+          { ...reqOpts, onChunk: opts.onChunk },
+        )
+        const content = assistantMessage(completion).content
+        return typeof content === 'string' ? content : ''
+      }
       const completion = await this.request(
         'ai.complete',
         { prompt, ...aiWireOpts(opts) } as MethodParams<'ai.complete'>,
@@ -565,6 +591,7 @@ function aiWireOpts(opts?: AiOpts): Record<string, unknown> {
   if (opts.tools !== undefined) out.tools = opts.tools
   if (opts.toolChoice !== undefined) out.tool_choice = opts.toolChoice
   if (opts.thinking !== undefined) out.thinking = opts.thinking
+  if (opts.onChunk !== undefined) out.stream = true
   return out
 }
 

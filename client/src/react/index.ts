@@ -35,3 +35,4 @@ export {
 export { type FileChangeEvent, type FilesHandle, useFiles } from './use-files'
 export { type GitHandle, useGit } from './use-git'
 export { type UseUserResult, useUser } from './use-user'
+export { useCompletion } from './use-completion'

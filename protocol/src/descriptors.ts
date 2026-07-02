@@ -74,6 +74,12 @@ export interface MethodDescriptor {
    * cases from it.
    */
   paginated?: boolean
+  /**
+   * When true, the method supports server-sent streaming via `stream: true` in
+   * its params. The host bridge opens an SSE/streaming response and pushes
+   * `ai.delta` events correlated by `requestId`.
+   */
+  streaming?: boolean
 }
 
 /**
@@ -213,9 +219,11 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
   'ai.chat': {
     http: { verb: 'POST', path: '/' },
     auth: { signedOut: 'throw', onError: 'throw' },
+    streaming: true,
   },
   'ai.complete': {
     http: { verb: 'POST', path: '/' },
     auth: { signedOut: 'throw', onError: 'throw' },
+    streaming: true,
   },
 }

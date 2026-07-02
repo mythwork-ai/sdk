@@ -22,8 +22,8 @@ export * from '@mythwork/protocol'
 
 export { MythworkClient } from './client'
 export type { EventHandler, EventPrefix } from './client'
-export { requestOverPort, PushRouter } from './transport'
-export type { RequestOptions, PushHandler } from './transport'
+export { requestOverPort, streamOverPort, PushRouter } from './transport'
+export type { RequestOptions, StreamOptions, PushHandler } from './transport'
 export { acquirePort, browserEnv, NO_PORT_ERROR } from './handshake'
 export type { HandshakeEnv, HandshakeOptions } from './handshake'
 

@@ -265,6 +265,10 @@ describe('ai namespace (mythwork-ai proxy)', () => {
     chan.port2.addEventListener('message', e => {
       const d = e.data as { id: string; method: string; args: Record<string, unknown> }
       outbound.push(d)
+      if (d.args?.stream) {
+        chan.port2.postMessage({ type: 'ai.delta', requestId: d.id, delta: 'hello ' })
+        chan.port2.postMessage({ type: 'ai.delta', requestId: d.id, delta: 'world' })
+      }
       chan.port2.postMessage({ id: d.id, result: completion })
     })
     client = new MythworkClient(chan.port1)
@@ -317,6 +321,32 @@ describe('ai namespace (mythwork-ai proxy)', () => {
   it('ai.complete maps camelCase opts onto the snake_case wire params', async () => {
     await client.ai.complete('hi', { system: 'be terse', maxTokens: 64 })
     expect(outbound[0]!.args).toEqual({ prompt: 'hi', system: 'be terse', max_tokens: 64 })
+  })
+
+  it('ai.complete with onChunk streams deltas and resolves the assistant text', async () => {
+    const chunks: string[] = []
+    const text = await client.ai.complete('write a haiku', { onChunk: d => chunks.push(d) })
+    expect(chunks).toEqual(['hello ', 'world'])
+    expect(text).toBe('hi there')
+  })
+
+  it('ai.complete with onChunk sends stream:true in outbound args', async () => {
+    await client.ai.complete('x', { onChunk: () => {} })
+    expect(outbound[0]!.args.stream).toBe(true)
+  })
+
+  it('ai.complete without onChunk does NOT send stream in outbound args (buffered path)', async () => {
+    await client.ai.complete('x')
+    expect(outbound[0]!.args).not.toHaveProperty('stream')
+  })
+
+  it('ai.chat with onChunk streams deltas and resolves the assistant ChatMessage', async () => {
+    const chunks: string[] = []
+    const msg = await client.ai.chat([{ role: 'user', content: 'hi' }], {
+      onChunk: d => chunks.push(d),
+    })
+    expect(chunks).toEqual(['hello ', 'world'])
+    expect(msg).toEqual({ role: 'assistant', content: 'hi there' })
   })
 })
 

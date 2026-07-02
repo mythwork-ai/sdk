@@ -1,5 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PushRouter, requestOverPort } from './transport'
+import { PushRouter, requestOverPort, streamOverPort } from './transport'
+
+// A synchronous mock MessagePort: `deliver(data)` fans a `{ data }` MessageEvent
+// out to every installed listener in-line, so tests are deterministic under fake
+// timers and can assert precise listener-removal (leak checks). `posted` records
+// every outbound postMessage.
+function makeMockPort() {
+  const listeners = new Set<(e: MessageEvent) => void>()
+  const posted: Array<Record<string, unknown>> = []
+  const port = {
+    addEventListener(type: string, h: EventListenerOrEventListenerObject) {
+      if (type === 'message') listeners.add(h as (e: MessageEvent) => void)
+    },
+    removeEventListener(type: string, h: EventListenerOrEventListenerObject) {
+      if (type === 'message') listeners.delete(h as (e: MessageEvent) => void)
+    },
+    postMessage(data: unknown) {
+      posted.push(data as Record<string, unknown>)
+    },
+  } as unknown as MessagePort
+  const deliver = (data: unknown) => {
+    for (const h of [...listeners]) h({ data } as MessageEvent)
+  }
+  return { port, posted, deliver, listenerCount: () => listeners.size }
+}
 
 // A node MessageChannel gives us two real, linked MessagePorts. We drive the
 // "host" side (port2) by hand to emulate replies and pushes.
@@ -69,6 +93,140 @@ describe('requestOverPort', () => {
     const assertion = expect(p).rejects.toThrow(/timed out after 30000ms/)
     await vi.advanceTimersByTimeAsync(30_000)
     await assertion
+  })
+})
+
+describe('streamOverPort', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('posts stream:true, forwards deltas in order, resolves on the terminal reply', async () => {
+    const { port, posted, deliver } = makeMockPort()
+    const chunks: string[] = []
+    const p = streamOverPort<{ text: string }>(
+      port,
+      'ai.generate',
+      { prompt: 'hi' },
+      {
+        onChunk: d => chunks.push(d),
+      },
+    )
+    expect(posted[0]).toMatchObject({
+      method: 'ai.generate',
+      args: { prompt: 'hi', stream: true },
+    })
+    const id = posted[0]!.id as string
+    deliver({ type: 'ai.delta', requestId: id, delta: 'a' })
+    deliver({ type: 'ai.delta', requestId: id, delta: 'b' })
+    deliver({ type: 'ai.delta', requestId: id, delta: 'c' })
+    deliver({ id, result: { text: 'abc' } })
+    await expect(p).resolves.toEqual({ text: 'abc' })
+    expect(chunks).toEqual(['a', 'b', 'c'])
+  })
+
+  it('ignores ai.delta pushes carrying a foreign requestId', async () => {
+    const { port, posted, deliver } = makeMockPort()
+    const chunks: string[] = []
+    const p = streamOverPort(port, 'ai.generate', {}, { onChunk: d => chunks.push(d) })
+    const id = posted[0]!.id as string
+    deliver({ type: 'ai.delta', requestId: 'someone-else', delta: 'x' })
+    deliver({ type: 'ai.delta', requestId: id, delta: 'y' })
+    deliver({ id, result: 'ok' })
+    await expect(p).resolves.toBe('ok')
+    expect(chunks).toEqual(['y'])
+  })
+
+  it('rejects with the wire error string on an { error } terminal', async () => {
+    const { port, posted, deliver, listenerCount } = makeMockPort()
+    const p = streamOverPort(port, 'ai.generate', {}, { onChunk: () => {} })
+    const id = posted[0]!.id as string
+    deliver({ id, error: 'model refused' })
+    await expect(p).rejects.toThrow('model refused')
+    expect(listenerCount()).toBe(0)
+  })
+
+  it('aborts: rejects AbortError, posts { id, type: cancel }, removes all listeners', async () => {
+    const { port, posted, listenerCount } = makeMockPort()
+    const ac = new AbortController()
+    const p = streamOverPort(port, 'ai.generate', {}, { onChunk: () => {}, signal: ac.signal })
+    const id = posted[0]!.id as string
+    ac.abort()
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' })
+    expect(posted.some(m => m.id === id && m.type === 'cancel')).toBe(true)
+    expect(listenerCount()).toBe(0)
+  })
+
+  it('rejects synchronously when the signal is already aborted', async () => {
+    const { port, posted } = makeMockPort()
+    const ac = new AbortController()
+    ac.abort()
+    const p = streamOverPort(port, 'ai.generate', {}, { onChunk: () => {}, signal: ac.signal })
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' })
+    // Never even sent the request.
+    expect(posted).toHaveLength(0)
+  })
+
+  it('resets the inactivity timeout on every delta (a long stream never trips it)', async () => {
+    vi.useFakeTimers()
+    const { port, posted, deliver } = makeMockPort()
+    const chunks: string[] = []
+    const p = streamOverPort(
+      port,
+      'ai.generate',
+      {},
+      {
+        onChunk: d => chunks.push(d),
+        timeoutMs: 1000,
+      },
+    )
+    const id = posted[0]!.id as string
+    let rejected = false
+    p.catch(() => {
+      rejected = true
+    })
+    // Each gap is 800ms (< 1000ms) but the cumulative time (2400ms) far exceeds
+    // the base timeout — only the per-delta reset keeps it alive.
+    await vi.advanceTimersByTimeAsync(800)
+    deliver({ type: 'ai.delta', requestId: id, delta: 'a' })
+    await vi.advanceTimersByTimeAsync(800)
+    deliver({ type: 'ai.delta', requestId: id, delta: 'b' })
+    await vi.advanceTimersByTimeAsync(800)
+    expect(rejected).toBe(false)
+    deliver({ id, result: 'done' })
+    await expect(p).resolves.toBe('done')
+    expect(chunks).toEqual(['a', 'b'])
+  })
+
+  it('trips the inactivity timeout when deltas stop arriving', async () => {
+    vi.useFakeTimers()
+    const { port, deliver } = makeMockPort()
+    const p = streamOverPort(port, 'ai.generate', {}, { onChunk: () => {}, timeoutMs: 1000 })
+    const assertion = expect(p).rejects.toThrow(/timed out after 1000ms/)
+    await vi.advanceTimersByTimeAsync(1000)
+    await assertion
+    // A late delta after the timeout is a no-op (listener already removed).
+    expect(() => deliver({ type: 'ai.delta', requestId: '0', delta: 'z' })).not.toThrow()
+  })
+})
+
+describe('requestOverPort abort support', () => {
+  it('rejects synchronously when the signal is already aborted', async () => {
+    const { port, posted } = makeMockPort()
+    const ac = new AbortController()
+    ac.abort()
+    const p = requestOverPort(port, 'x', {}, { signal: ac.signal })
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' })
+    expect(posted).toHaveLength(0)
+  })
+
+  it('rejects with AbortError, posts cancel, and removes the listener on abort', async () => {
+    const { port, posted, listenerCount } = makeMockPort()
+    const ac = new AbortController()
+    const p = requestOverPort(port, 'x', {}, { signal: ac.signal })
+    const id = posted[0]!.id as string
+    ac.abort()
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' })
+    expect(posted.some(m => m.id === id && m.type === 'cancel')).toBe(true)
+    expect(listenerCount()).toBe(0)
   })
 })
 

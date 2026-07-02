@@ -952,6 +952,31 @@ export function createDevHost(opts?: {
       }
     }
 
+    // Streaming AI request: emit ai.delta pushes BEFORE the terminal reply so
+    // streamOverPort's delta listener fires before its reply listener resolves.
+    if (
+      !response.error &&
+      req.args.stream === true &&
+      (req.method === 'ai.complete' || req.method === 'ai.chat')
+    ) {
+      const completion = response.result as ChatCompletion
+      const content = completion.choices?.[0]?.message?.content
+      const text = typeof content === 'string' ? content : ''
+      // Guard: skip the chunk loop entirely when text is empty — never emit an
+      // empty delta, never throw. For non-empty text split into ≤3 same-size
+      // chunks so the streaming path exercises ≥1 delta.
+      if (text) {
+        const chunkSize = Math.ceil(text.length / 3)
+        for (let i = 0; i < text.length; i += chunkSize) {
+          hostPort.postMessage({
+            type: 'ai.delta',
+            requestId: req.id,
+            delta: text.slice(i, i + chunkSize),
+          })
+        }
+      }
+    }
+
     hostPort.postMessage(response)
 
     // Emit kernel.authChanged push after sign-in / sign-out (after the RPC

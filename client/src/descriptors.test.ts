@@ -69,4 +69,9 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
     expect(API_METHOD_DESCRIPTORS['ai.chat']?.http).toEqual({ verb: 'POST', path: '/' })
     expect(API_METHOD_DESCRIPTORS['ai.complete']?.http).toEqual({ verb: 'POST', path: '/' })
   })
+
+  it('marks ai.chat and ai.complete as streaming', () => {
+    expect(API_METHOD_DESCRIPTORS['ai.chat']?.streaming).toBe(true)
+    expect(API_METHOD_DESCRIPTORS['ai.complete']?.streaming).toBe(true)
+  })
 })
