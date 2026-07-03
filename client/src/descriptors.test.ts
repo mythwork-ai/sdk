@@ -38,7 +38,7 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
       .filter(([, d]) => d?.paginated)
       .map(([m]) => m)
       .sort()
-    expect(paged).toEqual(['explore.comments', 'explore.listApps'])
+    expect(paged).toEqual(['explore.comments', 'explore.listApps', 'explore.myApps'])
   })
 
   it('locks the postures the deployed bridges define', () => {

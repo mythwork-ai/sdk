@@ -85,7 +85,7 @@ Pushes carry **no `id`**. The `type` field is the event string (a key of
 
 > The catalog below (**52 methods**, **8 events**) documents the original
 > deployed-v1 surface. A separate **Explore surface** section near the end
-> describes the **+21** explore/engagement methods. All **+21** are
+> describes the **+22** explore/engagement methods. All **+22** are
 > `@experimental` — the API surface may still evolve before 1.0.
 
 ## Methods catalog
@@ -268,7 +268,7 @@ the `type` field.
 > on purpose.** The methods and types in this section back the explore /
 > engagement backend. The one exception is **`project.remix`**, which still has
 > **no bridge** and is **not yet served**. The v1 catalog above documents the
-> original surface (**52 methods**, **8 events**); this section adds **+21
+> original surface (**52 methods**, **8 events**); this section adds **+22
 > methods** and the data types they use. Everything here stays `@experimental`
 > — the API surface may still evolve before 1.0.
 
@@ -283,9 +283,9 @@ Conventions for this surface:
   rows: `favoritedByViewer`, my rating, …). Engagement writes and `/me`-style
   reads are **signed-in** (gated host-side); noted per method below.
 
-### Methods (+21)
+### Methods (+22)
 
-#### explore.* (14)
+#### explore.* (15)
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
@@ -301,6 +301,7 @@ Conventions for this surface:
 | `explore.rate` | `{ projectId: string; stars: 1 \| 2 \| 3 \| 4 \| 5 }` | `Ok \| { ok: false; reason: string }` | **Signed-in** (signed-out → `{ ok: false, reason: 'sign_in_required' }`, zero network). Backing: ratings D1 (aggregated into app_stats) |
 | `explore.clearRating` | `{ projectId: string }` | `Ok \| { ok: false; reason: string }` | **Signed-in;** re-clicking the current star clears. Backing: ratings D1 |
 | `explore.myRatings` | `{}` | `{ ratings: Record<string, number> } \| { ok: false; reason: string }` | **Signed-in;** `projectId` → stars. Backing: ratings D1 |
+| `explore.myApps` | `{ cursor?: string }` | `{ items: MyAppSummary[]; nextCursor?: string } \| { ok: false; reason: string }` | **Signed-in;** the viewer's own apps — published, unpublished, and scan-gate-restricted — flagged (`unpublished`/`restricted`) rather than filtered. Scoped only to the caller's own `publisher_user_id`. Backing: apps D1 |
 | `explore.comments` | `{ projectId: string; cursor?: string }` | `{ items: CommentNode[]; nextCursor?: string }` | Public; newest first, one nesting level. Backing: comments D1 |
 | `explore.addComment` | `{ projectId: string; body: string; parentCommentId?: string }` | `CommentNode \| { ok: false; reason: string }` | **Signed-in;** `parentCommentId` present = reply (cannot nest further). Backing: comments D1 |
 
@@ -335,6 +336,7 @@ Conventions for this surface:
 | `MakerRef` | `{ handle: string; displayName: string }` — lightweight maker reference embedded in app/comment rows |
 | `AppSummary` | `{ projectId, alias, name, tagline, description: string \| null, maker: MakerRef, tags: string[], launches, publishedAt, theme?, badge?, editorsChoice, rating: { average, count }, trendPct?, favoritedByViewer? }` — one app in discovery lists; `description` is the published top-level package.json `description` (`null` when none); `favoritedByViewer` present only with a session |
 | `AppDetail` | `AppSummary & { makersNote?: string; remixCount: number }` — full app detail from `explore.getApp` |
+| `MyAppSummary` | `AppSummary & { unpublished: boolean; restricted: boolean }` — one app in the viewer's own `explore.myApps` list; flags replace the filtering the public listing applies |
 | `MakerSummary` | `{ handle, displayName, picture?, bio?, location?, link?, appCount, totalLaunches, followedByViewer? }` — maker card; `followedByViewer` present only with a session |
 | `SpotlightItem` | `{ projectId, kicker, headline, blurb }` — the editorial spotlight slot |
 | `CollectionInfo` | `{ id, title, blurb, tags: string[], theme? }` — one editorial collection |

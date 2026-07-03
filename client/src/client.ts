@@ -516,6 +516,12 @@ export class MythworkClient {
     myRatings: (params: MethodParams<'explore.myRatings'> = {}, opts?: RequestOptions) =>
       this.request('explore.myRatings', params, opts),
     /**
+     * The signed-in viewer's own apps (published, unpublished, and
+     * restricted — flagged, never filtered). Signed-in. Wire: `explore.myApps`.
+     */
+    myApps: (params: MethodParams<'explore.myApps'> = {}, opts?: RequestOptions) =>
+      this.request('explore.myApps', params, opts),
+    /**
      * @experimental — API may still evolve before 1.0. An app's comments,
      * newest first, paginated. Wire: `explore.comments`.
      */

@@ -268,10 +268,10 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.event` | `event.sendBatch` |
 | `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite` |
 | `sdk.profile` (additional methods) | `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs` — `@experimental` |
-| `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.comments`, `explore.addComment` — `@experimental` |
+| `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.myApps`, `explore.comments`, `explore.addComment` — `@experimental` |
 | `sdk.project` (**draft**) | `project.remix` (as `sdk.project.remix`) — `@experimental`, **not yet served** |
 
-The `sdk.explore` namespace (14 methods) and the `sdk.profile.*` additions are
+The `sdk.explore` namespace (15 methods) and the `sdk.profile.*` additions are
 `@experimental` — present so apps can compile today, and the surface may still
 evolve before 1.0. The lone exception is **`sdk.project.remix`**, which still
 has **no bridge** and is **not yet served** (calling it against any current host

@@ -20,6 +20,7 @@ import type {
   DiffEntry,
   FavoriteEdge,
   MakerSummary,
+  MyAppSummary,
   NotificationPrefs,
   Ok,
   OpenAITool,
@@ -532,6 +533,22 @@ export interface MethodMap {
   'explore.myRatings': {
     params: Record<string, never>
     result: { ratings: Record<string, number> } | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * The signed-in viewer's own apps — published, unpublished, and
+   * scan-gate-restricted, flagged rather than filtered. Unlike
+   * `explore.listApps`, this NEVER excludes the viewer's own unpublished or
+   * restricted apps; it surfaces their status instead so an owner can always
+   * find something they unpublished. Signed-in: with no session the bridge
+   * returns `{ ok: false, reason: 'sign_in_required' }` without a network
+   * call, same as `explore.myRatings`. Backing: `apps` D1, scoped to the
+   * authenticated viewer's own `publisher_user_id` only.
+   */
+  'explore.myApps': {
+    params: { cursor?: string }
+    result: { items: MyAppSummary[]; nextCursor?: string } | { ok: false; reason: string }
   }
   /**
    * @experimental — API may still evolve before 1.0.

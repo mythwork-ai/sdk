@@ -1,6 +1,6 @@
 {
   "name": "@mythwork/protocol",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "type": "module",
   "license": "MIT",
   "description": "Spec-first TypeScript definition of the Mythwork host <-> inner-app postMessage protocol: envelope types, handshake constants, the full method map, the event map, and the pure data types they reference. Runtime code is constants only.",

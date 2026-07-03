@@ -194,6 +194,21 @@ export type AppDetail = AppSummary & {
 /**
  * @experimental — API may still evolve before 1.0.
  *
+ * One app as it appears in the signed-in viewer's own My Apps view
+ * (`explore.myApps`) — an {@link AppSummary} plus the two owner-only status
+ * flags the public discovery surface never exposes (it filters these apps
+ * out entirely instead).
+ */
+export type MyAppSummary = AppSummary & {
+  /** True when the app is tombstoned (unpublish/delete) — hidden from Discover, still fully intact. */
+  unpublished: boolean
+  /** True when the app is hidden from Discover by the read-time moderation scan gate. */
+  restricted: boolean
+}
+
+/**
+ * @experimental — API may still evolve before 1.0.
+ *
  * A maker (creator) card as returned by `explore.search` and the maker-profile
  * header. `followedByViewer` is present only with an attached session.
  */

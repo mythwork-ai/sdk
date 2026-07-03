@@ -143,6 +143,11 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     http: { verb: 'GET', path: '/explore/my-ratings' },
     auth: { signedOut: 'result', onError: 'result' },
   },
+  'explore.myApps': {
+    http: { verb: 'GET', path: '/explore/my-apps' },
+    auth: { signedOut: 'result', onError: 'result' },
+    paginated: true,
+  },
   'explore.rate': {
     http: { verb: 'POST', path: '/explore/rate' },
     auth: { signedOut: 'result', onError: 'result' },
