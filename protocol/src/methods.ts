@@ -740,6 +740,22 @@ export interface MethodMap {
     result: { names: string[] } | { ok: false; reason: string }
   }
 
+  // ── event.* ─────────────────────────────────────────────────────────────
+
+  /**
+   * Send a batch of events, captured by the calling app, to the platform —
+   * generic ingest; error reports are the current use case, usage analytics
+   * a planned one. Best-effort: the host forwards the batch server-side and
+   * always resolves `Ok`, even if the forward itself fails. Caps (server-
+   * enforced): `batch` ≤ 100 items; each item must be a JSON object whose
+   * serialization is ≤ 8KB of UTF-8 bytes — a violating item is dropped and
+   * counted server-side, never fatal to the rest of the batch.
+   */
+  'event.sendBatch': {
+    params: { batch: Record<string, unknown>[] }
+    result: Ok
+  }
+
   // ── ai.* (mythwork-ai proxy) ────────────────────────────────────────────
   // @experimental — API may still evolve before 1.0. The app-facing surface of
   // the `mythwork-ai` proxy (PR #382): an OpenAI-compatible chat-completions

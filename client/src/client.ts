@@ -322,6 +322,39 @@ export class MythworkClient {
     list: (opts?: RequestOptions) => this.request('prompts.list', {}, opts),
   }
 
+  // ── event.* ───────────────────────────────────────────────────────────────
+  /** Generic event reporting. Maps to `event.sendBatch`. */
+  readonly event = {
+    /**
+     * Send a batch of events (error reports today, usage analytics planned).
+     * Never rejects for TRANSPORT-level failures: host error replies (e.g. an
+     * already-deployed host predating the event bridge rejecting `event.*` as
+     * an unknown method) and request timeouts both resolve `{ ok: true }` — a
+     * telemetry call must never become a second failure inside an app's error
+     * handler. Two rejections DO propagate, deliberately: an abort from a
+     * caller-supplied `opts.signal` (the caller asked for it) and a
+     * `DataCloneError` from a non-cloneable batch item (a function/DOM node in
+     * an error payload is a programmer error — swallowing it would make
+     * telemetry silently dead forever). Caps: batch ≤ 100 items; each item a
+     * JSON object whose serialization is ≤ 8KB UTF-8 bytes — violating items
+     * are dropped server-side and counted, not fatal to the batch.
+     * Wire: `event.sendBatch`.
+     */
+    sendBatch: (
+      params: MethodParams<'event.sendBatch'>,
+      opts?: RequestOptions,
+    ): Promise<MethodResult<'event.sendBatch'>> =>
+      this.request('event.sendBatch', params, opts).catch((e: unknown) => {
+        // requestOverPort mints host-error replies AND timeouts as bare
+        // `new Error(...)` (name === 'Error') — the only two swallowable
+        // outcomes. Aborts are name 'AbortError' and a non-cloneable arg
+        // makes postMessage throw a 'DataCloneError' DOMException, so a
+        // name check (not a message regex) cleanly separates them.
+        if (e instanceof Error && e.name === 'Error') return { ok: true as const }
+        throw e
+      }),
+  }
+
   // ── profile.* ─────────────────────────────────────────────────────────────
   /** Creator-profile reads and consent-gated mutations. Maps to `profile.*`. */
   readonly profile = {

@@ -102,6 +102,16 @@ const app = await sdk.explore.getApp({ projectId: items[0]!.projectId })
 await sdk.explore.rate({ projectId: app.projectId, stars: 5 })
 ```
 
+### Event reporting
+
+```ts
+// Best-effort telemetry batch (error reports today, usage analytics planned).
+// Never rejects on transport/host errors — including `Unknown method` from an
+// older host. Only a caller abort (AbortError) and a non-cloneable batch item
+// (DataCloneError — a programmer error) propagate.
+await sdk.event.sendBatch({ batch: [{ name: 'page:view' }] })
+```
+
 ### Subscribe to file changes
 
 ```ts
@@ -255,6 +265,7 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.auth` | `kernel.getUser`, `kernel.signIn`, `kernel.signOut`; event `kernel.authChanged` |
 | `sdk.secrets` | `secrets.check`, `secrets.proxyFetch` |
 | `sdk.config` | `config.get` |
+| `sdk.event` | `event.sendBatch` |
 | `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite` |
 | `sdk.profile` (additional methods) | `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs` — `@experimental` |
 | `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.comments`, `explore.addComment` — `@experimental` |

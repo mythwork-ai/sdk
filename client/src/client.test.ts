@@ -134,6 +134,12 @@ describe('namespaced helper → wire method mapping', () => {
       'profile.submitClaim',
       { name: 'Eric', email: 'e@x.com', handle: 'eric', acceptedTerms: true },
     ],
+    [
+      'event.sendBatch',
+      () => client.event.sendBatch({ batch: [{ message: 'boom' }] }),
+      'event.sendBatch',
+      { batch: [{ message: 'boom' }] },
+    ],
   ]
 
   for (const [label, invoke, wireMethod, wireArgs] of cases) {
@@ -428,5 +434,70 @@ describe('event helpers route to the right push prefix', () => {
     chan.port2.postMessage({ type: 'kernel.authChanged', user: { kind: 'anonymous', userId: 'a' } })
     await flush()
     expect(hits).toHaveLength(1)
+  })
+})
+
+describe('event.sendBatch never-rejects contract', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+  })
+
+  /** Wire a client whose "host" replies to every request with `reply(id)`. */
+  function hostReplying(reply: ((id: string) => unknown) | null): MythworkClient {
+    chan = new MessageChannel()
+    chan.port2.start()
+    if (reply) {
+      chan.port2.addEventListener('message', e => {
+        const d = e.data as { id: string }
+        chan.port2.postMessage(reply(d.id))
+      })
+    }
+    client = new MythworkClient(chan.port1)
+    return client
+  }
+
+  it('resolves { ok: true } when the host rejects the request (pre-event-bridge routers)', async () => {
+    // An already-deployed host whose router predates the `event.` prefix
+    // rejects the RPC — the helper must swallow it, never blow up inside
+    // the app's error handler.
+    const c = hostReplying(id => ({ id, error: 'Unknown method: event.sendBatch' }))
+
+    await expect(c.event.sendBatch({ batch: [{ message: 'boom' }] })).resolves.toEqual({
+      ok: true,
+    })
+  })
+
+  it('resolves { ok: true } on a timeout (host never replies)', async () => {
+    const c = hostReplying(null)
+
+    await expect(
+      c.event.sendBatch({ batch: [{ message: 'boom' }] }, { timeoutMs: 1 }),
+    ).resolves.toEqual({ ok: true })
+  })
+
+  it('propagates a DataCloneError from a non-cloneable batch item (programmer error)', async () => {
+    // A function in an error payload can't cross postMessage — swallowing
+    // this would leave telemetry silently dead forever, so it must throw.
+    const c = hostReplying(id => ({ id, result: { ok: true } }))
+
+    // Short timeoutMs: the sync postMessage throw settles the promise, but
+    // the transport's already-armed timer isn't cleaned up on that path —
+    // keep it from outliving the test.
+    await expect(
+      c.event.sendBatch({ batch: [{ callback: () => {} }] }, { timeoutMs: 50 }),
+    ).rejects.toMatchObject({ name: 'DataCloneError' })
+  })
+
+  it('propagates an abort from a caller-supplied signal', async () => {
+    const c = hostReplying(null)
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(
+      c.event.sendBatch({ batch: [] }, { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

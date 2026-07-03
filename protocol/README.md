@@ -83,14 +83,14 @@ Pushes carry **no `id`**. The `type` field is the event string (a key of
 
 ---
 
-> The catalog below (**49 methods**, **7 events**) documents the original
+> The catalog below (**52 methods**, **8 events**) documents the original
 > deployed-v1 surface. A separate **Explore surface** section near the end
-> describes the **+19** explore/engagement methods. All **+19** are
+> describes the **+21** explore/engagement methods. All **+21** are
 > `@experimental` — the API surface may still evolve before 1.0.
 
 ## Methods catalog
 
-49 wire methods grouped by namespace. Unless noted, all methods are available
+52 wire methods grouped by namespace. Unless noted, all methods are available
 without authentication. "Auth-gated" means the host requires a signed-in session
 (it associates a canonical project id before proceeding).
 
@@ -201,6 +201,16 @@ the success shape) rather than throwing.
 | `kernel.signIn` | `{}` | `User` | Opens Google OAuth popup if needed; also fires `kernel.authChanged` push |
 | `kernel.signOut` | `{}` | `User` | Resolves optimistically; `kernel.authChanged` push reconfirms |
 
+### event.*
+
+Generic event ingest (error reports today, usage analytics planned). The host
+bridge stamps the trusted appId and viewer auth server-side — apps cannot
+supply or spoof attribution.
+
+| Wire method | Params | Result | Notes |
+|---|---|---|---|
+| `event.sendBatch` | `{ batch: Record<string, unknown>[] }` | `Ok` | Best-effort: the host forwards the batch server-side and always resolves `Ok`, even if the forward fails. Caps (server-enforced): `batch` ≤ 100 items; each item a JSON object whose serialization is ≤ 8KB of UTF-8 bytes — a violating item is dropped and counted server-side, never fatal to the rest of the batch |
+
 ### db.* — @internal
 
 Apps normally reach key-value storage through higher-level store helpers rather
@@ -218,7 +228,7 @@ than calling these directly.
 
 ## Events catalog
 
-7 push events. All are id-less `PushMessage`s; the payload is the message minus
+8 push events. All are id-less `PushMessage`s; the payload is the message minus
 the `type` field.
 
 | Wire type | Payload fields | Notes |
@@ -258,7 +268,7 @@ the `type` field.
 > on purpose.** The methods and types in this section back the explore /
 > engagement backend. The one exception is **`project.remix`**, which still has
 > **no bridge** and is **not yet served**. The v1 catalog above documents the
-> original surface (**49 methods**, **7 events**); this section adds **+19
+> original surface (**52 methods**, **8 events**); this section adds **+21
 > methods** and the data types they use. Everything here stays `@experimental`
 > — the API surface may still evolve before 1.0.
 
@@ -273,7 +283,7 @@ Conventions for this surface:
   rows: `favoritedByViewer`, my rating, …). Engagement writes and `/me`-style
   reads are **signed-in** (gated host-side); noted per method below.
 
-### Methods (+19)
+### Methods (+21)
 
 #### explore.* (14)
 
@@ -294,7 +304,7 @@ Conventions for this surface:
 | `explore.comments` | `{ projectId: string; cursor?: string }` | `{ items: CommentNode[]; nextCursor?: string }` | Public; newest first, one nesting level. Backing: comments D1 |
 | `explore.addComment` | `{ projectId: string; body: string; parentCommentId?: string }` | `CommentNode \| { ok: false; reason: string }` | **Signed-in;** `parentCommentId` present = reply (cannot nest further). Backing: comments D1 |
 
-#### profile.* (4 additions)
+#### profile.* (6 additions)
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
