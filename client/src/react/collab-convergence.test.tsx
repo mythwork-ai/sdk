@@ -325,6 +325,64 @@ describe('@mythwork/sdk/react — collab room', () => {
     })
   })
 
+  it('fires a websocket with the production-shaped collab URL for an associated project', async () => {
+    // Regression: when collab.openRoom resolves with a real (non-empty) serverUrl
+    // — the scenario for any project associated with a canonical id — the SDK
+    // MUST attempt the WS with that URL, not degrade to local (serverUrl='').
+    // Verifies the `connectWebsocket = ... && serverUrl !== ''` gate (#505) does
+    // not accidentally suppress the connection for a real provision response.
+    const capturedUrls: string[] = []
+    _setProviderFactoryForTests((serverUrl, roomId, doc, opts) => {
+      capturedUrls.push(serverUrl)
+      return relayProviderFactory(serverUrl, roomId, doc, opts)
+    })
+
+    const ROOM_ID = 'room:deadbeef01deadbeef01deadbeef01deadbeef01deadbeef01'
+    const WS_URL = 'wss://collab.llama.space'
+    const chan = new MessageChannel()
+    chan.port2.start()
+    chan.port2.onmessage = (e: MessageEvent) => {
+      const { id, method, args } = e.data as {
+        id: string
+        method: string
+        args: Record<string, unknown>
+      }
+      if (method === 'project.open') {
+        chan.port2.postMessage({ id, result: { pid: args.pid ?? 'p-assoc', role: 'leader' } })
+      } else if (method === 'collab.openRoom') {
+        // Response shape matching what the live /room/provision API returns via
+        // the collab bridge (canonical project, production zone URL).
+        chan.port2.postMessage({
+          id,
+          result: { roomId: ROOM_ID, serverUrl: WS_URL, joinToken: 'eyJ.live-token' },
+        })
+      } else {
+        chan.port2.postMessage({ id, result: {} })
+      }
+    }
+    const client = new MythworkClient(chan.port1)
+
+    function Probe(): React.JSX.Element {
+      const { doc, status } = useCollabRoom({ name: 'index.html' })
+      return <div data-testid="probe">{doc ? status : 'loading'}</div>
+    }
+    const api = render(
+      <MythworkProvider connect={() => Promise.resolve(client)}>
+        <MythworkProjectProvider pid="pAssociated">
+          <Probe />
+        </MythworkProjectProvider>
+      </MythworkProvider>,
+    )
+
+    await waitFor(() => {
+      expect(api.queryByTestId('probe')?.textContent).toBe('connected')
+    })
+
+    // The provider factory MUST have been called with the real WS URL, not ''.
+    expect(capturedUrls).toContain(WS_URL)
+    expect(capturedUrls.every(u => u !== '')).toBe(true)
+  })
+
   it('does not attempt a websocket when collab.openRoom RESOLVES with the local descriptor', async () => {
     // Regression: an unassociated project's `collab.openRoom` bridge handler
     // does not reject — it resolves cleanly with `{ roomId: 'local:...',

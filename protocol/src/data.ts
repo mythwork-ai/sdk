@@ -318,21 +318,38 @@ export interface NotificationPrefs {
  */
 export type NotificationCategory = 'comments' | 'remixes' | 'followers' | 'weeklyDigest'
 
+interface NotificationInboxItemBase {
+  id: string
+  subject: string
+  body: string
+  read: boolean
+  createdAt: number
+}
+
 /**
  * @experimental — API may still evolve before 1.0.
  *
  * One row in the viewer's notification inbox. `read` is derived server-side
- * from the stored `read_at` timestamp.
+ * from the stored `read_at` timestamp. `context` is a discriminated union
+ * keyed on `category` so a consumer never has to guess field names — see
+ * docs/superpowers/specs/2026-07-04-notification-context-enrichment-design.md.
  */
-export interface NotificationInboxItem {
-  id: string
-  category: NotificationCategory
-  subject: string
-  body: string
-  context: Record<string, unknown>
-  read: boolean
-  createdAt: number
-}
+export type NotificationInboxItem =
+  | (NotificationInboxItemBase & {
+      category: 'comments'
+      context: { appKey: string; commentId: string }
+    })
+  | (NotificationInboxItemBase & {
+      category: 'followers'
+      context: { followerUserId: string; followerHandle: string; followerDisplayName: string }
+    })
+  | (NotificationInboxItemBase & {
+      /** @experimental — context shape undefined until `project.remix` has a
+       *  server handler and a real trigger exists; left untyped deliberately. */
+      category: 'remixes'
+      context: Record<string, unknown>
+    })
+  | (NotificationInboxItemBase & { category: 'weeklyDigest'; context: Record<string, never> })
 
 /**
  * @experimental — API may still evolve before 1.0.

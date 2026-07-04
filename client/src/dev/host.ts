@@ -522,7 +522,7 @@ const handlers: Record<string, Handler> = {
         category: 'comments',
         subject: 'New comment on your app',
         body,
-        context: { projectId },
+        context: { appKey: projectId, commentId: id },
         read: false,
         createdAt,
       })
@@ -537,7 +537,7 @@ const handlers: Record<string, Handler> = {
       category: 'comments',
       subject: 'New comment on your app',
       body,
-      context: { projectId },
+      context: { appKey: projectId, commentId: id },
       read: false,
       createdAt,
     })
@@ -658,12 +658,17 @@ const handlers: Record<string, Handler> = {
     if (was) state.favoriteCreators.delete(targetId)
     else state.favoriteCreators.add(targetId)
     if (!was) {
+      const follower = state.user as { userId: string; displayName?: string }
       state.notifications.unshift({
         id: `dev-n${state.notificationSeq++}`,
         category: 'followers',
         subject: 'You have a new follower',
         body: 'Someone started following you on myth.work.',
-        context: { followerUserId: (state.user as { userId: string }).userId },
+        context: {
+          followerUserId: follower.userId,
+          followerHandle: follower.userId,
+          followerDisplayName: follower.displayName ?? follower.userId,
+        },
         read: false,
         createdAt: Date.now(),
       })
