@@ -7,7 +7,7 @@
 // and the descriptor-walking conformance harness.
 //
 // Host-local methods (fs.*, project.*, collab.*, kernel.*, db.*, ydocs.*,
-// config.get) have no HTTP binding and never appear here. The explore and
+// config.get, agent.*) have no HTTP binding and never appear here. The explore and
 // profile namespaces are fully declared below. The `ai.*` namespace also
 // appears here, but binds to a SEPARATE backend (the `mythwork-ai` worker on
 // ai.{zone}, resolved bridge-side) rather than the api worker.
@@ -209,6 +209,30 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
   },
   'profile.setNotificationPrefs': {
     http: { verb: 'PUT', path: '/profile/me/notification-prefs' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+
+  // ── notifications.* ──────────────────────────────────────────────────────
+  'notifications.list': {
+    http: { verb: 'GET', path: '/notifications' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+    paginated: true,
+  },
+  'notifications.listUnread': {
+    http: { verb: 'GET', path: '/notifications/unread' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+    paginated: true,
+  },
+  'notifications.getUnreadCount': {
+    http: { verb: 'GET', path: '/notifications/unread-count' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'notifications.markRead': {
+    http: { verb: 'PATCH', path: '/notifications/:id/read' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'notifications.markUnread': {
+    http: { verb: 'PATCH', path: '/notifications/:id/unread' },
     auth: { signedOut: 'throw', onError: 'throw' },
   },
 

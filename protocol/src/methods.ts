@@ -21,6 +21,7 @@ import type {
   FavoriteEdge,
   MakerSummary,
   MyAppSummary,
+  NotificationInboxItem,
   NotificationPrefs,
   Ok,
   OpenAITool,
@@ -66,6 +67,105 @@ interface AiOptsBase {
 export type AiOpts =
   | (AiOptsBase & { system?: string; systemPreset?: never })
   | (AiOptsBase & { system?: never; systemPreset?: string })
+
+/**
+ * @experimental The reasons an `agent.*` call may fail as a gated RESULT (rather
+ * than a thrown error):
+ *   - `sign_in_required`      — signed out (enforced bridge-local, zero network).
+ *   - `turn_in_progress`      — a turn already holds the (shared) loop.
+ *   - `session_limit`         — the per-shell session cap is reached.
+ *   - `unknown_session`       — no session for the given id.
+ *   - `unknown_question`      — `agent.answer` id does not match the session's
+ *                               pending `question` event.
+ *   - `custom_tools_unsupported` — v1 rejects client `tools` declarations.
+ */
+export type AgentGatedReason =
+  | 'sign_in_required'
+  | 'turn_in_progress'
+  | 'session_limit'
+  | 'unknown_session'
+  | 'unknown_question'
+  | 'custom_tools_unsupported'
+
+/**
+ * @experimental Gated-result failure envelope returned as a result value rather
+ * than a thrown error. Used by `agent.*` for the precondition failures above.
+ */
+export type GatedResult = { ok: false; reason: AgentGatedReason }
+
+/**
+ * @experimental Options for opening a new agent session. All fields are
+ * optional; the host resolves defaults server-side.
+ *
+ * - `persona`: named persona preset (resolved server-side, never bundled).
+ * - `variant`: variant of the persona (e.g. `'concise'`, `'creative'`).
+ * - `model`: override the default LLM model.
+ * - `toolset`: named toolset restricts which tools the agent may call.
+ * - `instructions`: bounded inline instruction appended last (≤2 KB).
+ * - `tools`: custom tool declarations — v1 rejects with `custom_tools_unsupported`.
+ */
+export interface AgentSessionOptions {
+  persona?: string
+  variant?: string
+  model?: string
+  toolset?: string
+  instructions?: string
+  tools?: unknown[]
+}
+
+/**
+ * @experimental The union of all events the host may push for an agent session.
+ * `kind` is the discriminant.
+ *
+ * Protocol law:
+ * - `turn-done` is the ONLY terminal signal. `error` carries `fatal` and NEVER
+ *   terminates a turn by itself.
+ * - `cycle-start` bounds bubble segments so post-tool text cannot collapse into
+ *   a pre-tool bubble.
+ * - `tool-start` carries display facts only — never raw args.
+ */
+export type AgentEvent =
+  | { kind: 'turn-start'; turnId: string }
+  | { kind: 'cycle-start'; cycle: number }
+  | { kind: 'text-delta'; delta: string }
+  | { kind: 'text-done'; text: string }
+  | { kind: 'tool-start'; toolCallId: string; tool: string; detail?: Record<string, unknown> }
+  | {
+      kind: 'tool-result'
+      toolCallId: string
+      ok: boolean
+      summary?: string
+      filesChanged?: string[]
+    }
+  | { kind: 'question'; questionId: string; questions: { question: string; options: string[] }[] }
+  | { kind: 'changes'; files: string[]; checkpoint?: string }
+  | {
+      kind: 'error'
+      message: string
+      fatal: boolean
+      reason?: 'credits' | 'rate_limit' | 'sign_in' | 'aborted' | 'internal'
+    }
+  | { kind: 'turn-done'; turnId: string; status: 'ok' | 'stopped' | 'error' }
+  | { kind: 'usage'; promptTokens?: number; completionTokens?: number; costUsd?: number }
+  | { kind: 'tool-request'; requestId: string; tool: string; args: unknown }
+
+/**
+ * @experimental The push-message envelope for agent session events.
+ * `seq` is per-session monotonic; consumers detect gaps and recover via
+ * `agent.state`. Correlation is by `sessionId`, not `requestId`.
+ */
+export type AgentEventPush = {
+  type: 'agent.event'
+  sessionId: string
+  seq: number
+  event: AgentEvent
+}
+
+/**
+ * @experimental Session lifecycle state for `agent.state`. Narrows the `status`
+ * result field to the exhaustive set returned by the platform.
+ */
+export type AgentSessionStatus = 'idle' | 'active'
 
 /**
  * Result of the profile mutations: the host either returns the server JSON on
@@ -694,6 +794,57 @@ export interface MethodMap {
     params: Partial<NotificationPrefs>
     result: NotificationPrefs
   }
+
+  // ── notifications.* ──────────────────────────────────────────────────────
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Page the viewer's full notification inbox, newest first. Signed-in.
+   * Backing: notification_inbox D1.
+   */
+  'notifications.list': {
+    params: { cursor?: string; limit?: number }
+    result: { items: NotificationInboxItem[]; nextCursor: string | null }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Same as `notifications.list`, filtered to unread rows. Signed-in.
+   * Backing: notification_inbox D1.
+   */
+  'notifications.listUnread': {
+    params: { cursor?: string; limit?: number }
+    result: { items: NotificationInboxItem[]; nextCursor: string | null }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Cheap unread badge count (no pagination). Signed-in.
+   * Backing: notification_inbox D1.
+   */
+  'notifications.getUnreadCount': {
+    params: Record<string, never>
+    result: { count: number }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Mark one inbox row read. Signed-in. Backing: notification_inbox D1.
+   */
+  'notifications.markRead': {
+    params: { id: string }
+    result: Ok
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Mark one inbox row unread. Signed-in. Backing: notification_inbox D1.
+   */
+  'notifications.markUnread': {
+    params: { id: string }
+    result: Ok
+  }
+
   /**
    * @experimental — API may still evolve before 1.0.
    *
@@ -857,6 +1008,85 @@ export interface MethodMap {
    * sandboxed iframe with no top-navigation grant to reach `explore.{zone}`.
    */
   'nav.topLevel': { params: { target: 'explore' }; result: Ok }
+
+  // ── agent.* (hosted agent sessions — AI-SDK Layer 3) ────────────────────────
+  // @experimental — bridge-local (no HTTP binding). Auth: gated-result posture
+  // (signed-out → { ok:false, reason:'sign_in_required' } with ZERO network).
+  // Sessions live in the host shell and survive app-iframe reloads. Content
+  // arrives as `agent.event` pushes (per-session monotonic `seq`); the fast-ack
+  // { turnId } from `agent.send` is a correlation handle only.
+
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Open a new agent session. All options are optional; omitted fields resolve
+   * server-side defaults. v1 rejects `tools` declarations with
+   * `{ ok:false, reason:'custom_tools_unsupported' }`. Gated-result: signed-out
+   * resolves `{ ok:false, reason:'sign_in_required' }` with ZERO network.
+   * Wire: `agent.create`.
+   */
+  'agent.create': {
+    params: AgentSessionOptions
+    result: { sessionId: string } | GatedResult
+  }
+
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Start a turn by sending a user message. Resolves the fast-ack `{ turnId }`;
+   * content arrives as `agent.event` pushes. Gated-result: signed-out →
+   * `'sign_in_required'`; a turn already in progress → `'turn_in_progress'`.
+   * Wire: `agent.send`.
+   */
+  'agent.send': {
+    params: { sessionId: string; text: string; attachments?: unknown[] }
+    result: { turnId: string } | GatedResult
+  }
+
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Answer a pending `question` event; the turn resumes via events. Gated-result:
+   * signed-out → `'sign_in_required'`. Wire: `agent.answer`.
+   */
+  'agent.answer': {
+    params: { sessionId: string; questionId: string; answers: string[] }
+    result: Ok | GatedResult
+  }
+
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Abort the current turn; the session survives and emits `turn-done(stopped)`.
+   * Gated-result: signed-out → `'sign_in_required'`. Wire: `agent.stop`.
+   */
+  'agent.stop': {
+    params: { sessionId: string }
+    result: Ok | GatedResult
+  }
+
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Read session state for re-attach/replay. The `transcript` is bounded (oldest
+   * turns dropped beyond cap). Gated-result: signed-out → `'sign_in_required'`.
+   * Wire: `agent.state`.
+   */
+  'agent.state': {
+    params: { sessionId: string }
+    result: { status: AgentSessionStatus; transcript: unknown[] } | GatedResult
+  }
+
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Tear down a session, aborting any in-progress turn. Gated-result: signed-out
+   * → `'sign_in_required'`. Wire: `agent.dispose`.
+   */
+  'agent.dispose': {
+    params: { sessionId: string }
+    result: Ok | GatedResult
+  }
 }
 
 /** Every valid wire method string. */

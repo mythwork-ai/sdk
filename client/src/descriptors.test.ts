@@ -38,7 +38,13 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
       .filter(([, d]) => d?.paginated)
       .map(([m]) => m)
       .sort()
-    expect(paged).toEqual(['explore.comments', 'explore.listApps', 'explore.myApps'])
+    expect(paged).toEqual([
+      'explore.comments',
+      'explore.listApps',
+      'explore.myApps',
+      'notifications.list',
+      'notifications.listUnread',
+    ])
   })
 
   it('locks the postures the deployed bridges define', () => {
@@ -56,6 +62,8 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
     // profile signed-in reads/mutations that throw on both axes.
     expect(auth('profile.myFavorites')).toEqual({ signedOut: 'throw', onError: 'throw' })
     expect(auth('profile.setNotificationPrefs')).toEqual({ signedOut: 'throw', onError: 'throw' })
+    expect(auth('notifications.list')).toEqual({ signedOut: 'throw', onError: 'throw' })
+    expect(auth('notifications.getUnreadCount')).toEqual({ signedOut: 'throw', onError: 'throw' })
     // the hybrid the two axes were introduced for: throw with no token, but map
     // a validation 4xx to { ok:false, reason } so a settings screen can show it.
     expect(auth('profile.update')).toEqual({ signedOut: 'throw', onError: 'result' })

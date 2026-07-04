@@ -123,6 +123,36 @@ describe('namespaced helper → wire method mapping', () => {
       { comments: false },
     ],
     [
+      'notifications.list',
+      () => client.notifications.list({ limit: 10 }),
+      'notifications.list',
+      { limit: 10 },
+    ],
+    [
+      'notifications.listUnread',
+      () => client.notifications.listUnread({ limit: 10 }),
+      'notifications.listUnread',
+      { limit: 10 },
+    ],
+    [
+      'notifications.getUnreadCount',
+      () => client.notifications.getUnreadCount(),
+      'notifications.getUnreadCount',
+      {},
+    ],
+    [
+      'notifications.markRead',
+      () => client.notifications.markRead({ id: 'n1' }),
+      'notifications.markRead',
+      { id: 'n1' },
+    ],
+    [
+      'notifications.markUnread',
+      () => client.notifications.markUnread({ id: 'n1' }),
+      'notifications.markUnread',
+      { id: 'n1' },
+    ],
+    [
       'profile.submitClaim',
       () =>
         client.profile.submitClaim({

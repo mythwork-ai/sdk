@@ -18,6 +18,21 @@ The SDK is two lockstep-versioned packages that publish together:
 `@mythwork/sdk` re-exports everything from `@mythwork/protocol`, so most callers
 only need a single `npm install @mythwork/sdk`.
 
+## Higher-level packages built on this SDK
+
+The SDK itself stays a thin, opinion-free wire client (see below). Apps that
+want more than raw RPC — streaming edits, hosted agent sessions — use a
+separate package built on top of `@mythwork/sdk`, versioned and published
+independently:
+
+| Package | Layer | Role |
+|---|---|---|
+| [`@mythwork/agent`](../packages/agent/) | 3 | Hosted agent sessions: `AgentSession` + `useAgent()` over the `agent.*` RPC surface (`sdk.agent.*`). Consumers supply UI, voice, and rendering; the platform owns the loop, tools, and prompts. |
+
+These packages are **not** part of the `sdk/` tree and are not covered by its
+self-containment or public-mirror guarantees below — they're regular
+monorepo packages that happen to depend on `@mythwork/sdk`.
+
 ## Self-contained by design
 
 `sdk/` imports nothing from the rest of the monorepo (`packages/`, `shared/`,

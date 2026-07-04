@@ -31,7 +31,7 @@ import {
  * exact match, or a namespace prefix (e.g. `'fs'`) that also matches every
  * `'fs.*'` event. These are the prefixes the namespaced event helpers use.
  */
-export type EventPrefix = 'fs' | 'project' | 'db' | 'kernel' | 'publish' | 'collab'
+export type EventPrefix = 'fs' | 'project' | 'db' | 'kernel' | 'publish' | 'collab' | 'agent'
 
 /** Handler for a typed event subscription; receives the event's full payload. */
 export type EventHandler<E extends ProtocolEvent> = (payload: EventPayload<E>) => void
@@ -433,6 +433,41 @@ export class MythworkClient {
       this.request('profile.acceptInvite', params, opts),
   }
 
+  // ── notifications.* ───────────────────────────────────────────────────────
+  /** The viewer's in-app notification inbox. Maps to `notifications.*`. */
+  readonly notifications = {
+    /**
+     * @experimental — API may still evolve before 1.0. Page the viewer's full
+     * inbox, newest first. Signed-in. Wire: `notifications.list`.
+     */
+    list: (params: MethodParams<'notifications.list'> = {}, opts?: RequestOptions) =>
+      this.request('notifications.list', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Same as `list`, filtered
+     * to unread rows. Signed-in. Wire: `notifications.listUnread`.
+     */
+    listUnread: (params: MethodParams<'notifications.listUnread'> = {}, opts?: RequestOptions) =>
+      this.request('notifications.listUnread', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Cheap unread badge count
+     * (no pagination). Signed-in. Wire: `notifications.getUnreadCount`.
+     */
+    getUnreadCount: (opts?: RequestOptions) =>
+      this.request('notifications.getUnreadCount', {}, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Mark one row read.
+     * Signed-in. Wire: `notifications.markRead`.
+     */
+    markRead: (params: MethodParams<'notifications.markRead'>, opts?: RequestOptions) =>
+      this.request('notifications.markRead', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Mark one row unread.
+     * Signed-in. Wire: `notifications.markUnread`.
+     */
+    markUnread: (params: MethodParams<'notifications.markUnread'>, opts?: RequestOptions) =>
+      this.request('notifications.markUnread', params, opts),
+  }
+
   // ── explore.* ────────────────────────────────────────────────────────────
   /**
    * @experimental — API may still evolve before 1.0. Discovery and engagement
@@ -631,6 +666,58 @@ export class MythworkClient {
       const content = assistantMessage(completion).content
       return typeof content === 'string' ? content : ''
     },
+  }
+
+  // ── agent.* (hosted agent sessions — AI-SDK Layer 3) ─────────────────────────
+  /**
+   * @experimental — API may still evolve before 1.0. Hosted agent sessions. The
+   * loop runs in the host shell (billing via the host's session Bearer, zero new
+   * metering). Signed-out: all methods resolve a gated-result instead of
+   * rejecting. Content arrives as `agent.event` pushes — subscribe via
+   * `sdk.subscribe('agent.event', handler)` or `sdk.subscribe('agent', handler)`
+   * for the full namespace.
+   *
+   * Protocol law: `turn-done` is the ONLY terminal signal; `error` carries
+   * `fatal` and never implies termination; `cycle-start` bounds bubble segments.
+   */
+  readonly agent = {
+    /**
+     * @experimental Open a new agent session. All options are optional. v1 rejects
+     * `tools` declarations (`custom_tools_unsupported`); signed-out resolves
+     * gated-result. Wire: `agent.create`.
+     */
+    create: (params: MethodParams<'agent.create'>, opts?: RequestOptions) =>
+      this.request('agent.create', params, opts),
+    /**
+     * @experimental Start a turn (fast-ack `{ turnId }`); content arrives as
+     * `agent.event` pushes. Signed-out → `sign_in_required`; active turn →
+     * `turn_in_progress`. Wire: `agent.send`.
+     */
+    send: (params: MethodParams<'agent.send'>, opts?: RequestOptions) =>
+      this.request('agent.send', params, opts),
+    /**
+     * @experimental Answer a pending `question` event; the turn resumes via
+     * pushes. Wire: `agent.answer`.
+     */
+    answer: (params: MethodParams<'agent.answer'>, opts?: RequestOptions) =>
+      this.request('agent.answer', params, opts),
+    /**
+     * @experimental Abort the current turn; the session survives and emits
+     * `turn-done(stopped)`. Wire: `agent.stop`.
+     */
+    stop: (params: MethodParams<'agent.stop'>, opts?: RequestOptions) =>
+      this.request('agent.stop', params, opts),
+    /**
+     * @experimental Read session state for re-attach/replay. Wire: `agent.state`.
+     */
+    state: (params: MethodParams<'agent.state'>, opts?: RequestOptions) =>
+      this.request('agent.state', params, opts),
+    /**
+     * @experimental Tear down a session, aborting any in-progress turn.
+     * Wire: `agent.dispose`.
+     */
+    dispose: (params: MethodParams<'agent.dispose'>, opts?: RequestOptions) =>
+      this.request('agent.dispose', params, opts),
   }
 
   // ── nav.* ─────────────────────────────────────────────────────────────────

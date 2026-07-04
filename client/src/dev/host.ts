@@ -39,7 +39,7 @@
 //   - kernel.signIn/signOut: respond then emit kernel.authChanged push.
 //   - Unknown method: { id, error: 'Unknown method: <m>' } (never hangs).
 
-import type { PushMessage, RpcRequest, RpcResponse, User } from '@mythwork/protocol'
+import type { AgentEvent, PushMessage, RpcRequest, RpcResponse, User } from '@mythwork/protocol'
 import type {
   AppDetail,
   AppSummary,
@@ -49,6 +49,7 @@ import type {
   CommitAuthor,
   CommitInfo,
   FavoriteEdge,
+  NotificationInboxItem,
   NotificationPrefs,
   ProjectInfo,
   ProjectRole,
@@ -73,6 +74,20 @@ import {
 
 // ── mutable dev state ─────────────────────────────────────────────────────────
 
+interface DevAgentSession {
+  sessionId: string
+  /** True while a turn is in progress; guards turn_in_progress gating. */
+  turnActive: boolean
+  /** Pending stop request — honoured when the event script runs. */
+  pendingStop: boolean
+  /** Per-session monotonic seq counter for push envelopes. */
+  seq: number
+  /** Counter for generating deterministic turnIds. */
+  turnCounter: number
+  /** Bounded transcript for agent.state replay. */
+  transcript: Array<{ role: 'user' | 'assistant'; content: string }>
+}
+
 interface DevState {
   user: User
   /** projectId → user rating (1–5). */
@@ -84,6 +99,12 @@ interface DevState {
   /** projectId → list of CommentNode (lazy-seeded on first read). */
   comments: Map<string, CommentNode[]>
   notifPrefs: NotificationPrefs
+  /** The viewer's in-app notification inbox — mirrors the server's
+   * notification_inbox table. Comment/favorite handlers push onto this,
+   * mirroring the real backend's recordNotification behavior in dev. */
+  notifications: NotificationInboxItem[]
+  /** Monotonic counter for dev notification ids (mirrors commentSeq). */
+  notificationSeq: number
   commentSeq: number
   /**
    * The signed-in viewer's editable profile fields. Seeded from the maker on
@@ -115,6 +136,10 @@ interface DevState {
   firstParty: boolean
   /** The handle recorded by profile.claimHandle (undefined until claimed). */
   claimedHandle: string | undefined
+  /** Active agent sessions keyed by sessionId. */
+  agentSessions: Map<string, DevAgentSession>
+  /** Monotonic counter for generating deterministic session ids. */
+  agentSessionCounter: number
 }
 
 function freshState(
@@ -127,12 +152,16 @@ function freshState(
     favoriteCreators: new Set(),
     comments: new Map(),
     notifPrefs: { ...DEFAULT_NOTIF_PREFS },
+    notifications: [],
+    notificationSeq: 1,
     commentSeq: 1,
     profileFields: { bio: '', location: '', link: '' },
     appMetaOverrides: new Map(),
     noProfile: opts.noProfile ?? false,
     firstParty: opts.firstParty ?? false,
     claimedHandle: undefined,
+    agentSessions: new Map(),
+    agentSessionCounter: 0,
   }
 }
 
@@ -263,6 +292,78 @@ function devCompletion(text: string, model?: string): ChatCompletion {
     model: model ?? 'dev-model',
     choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
   }
+}
+
+/**
+ * Execute the scripted canned turn for the dev agent stub. Pushes a sequence of
+ * `agent.event` messages over `port` for `session`, finishing with `turn-done`.
+ * If a project exists in the shared store, also performs a file-edit so that
+ * `fs.changed` pushes fire — verifying the file-edit tool path end-to-end.
+ */
+function runDevAgentTurn(port: MessagePort, session: DevAgentSession, turnId: string): void {
+  function push(event: AgentEvent): void {
+    const msg: PushMessage = {
+      type: 'agent.event',
+      sessionId: session.sessionId,
+      seq: session.seq++,
+      event,
+    }
+    port.postMessage(msg)
+  }
+
+  if (session.pendingStop) {
+    session.pendingStop = false
+    session.turnActive = false
+    push({ kind: 'turn-done', turnId, status: 'stopped' })
+    return
+  }
+
+  push({ kind: 'turn-start', turnId })
+  push({ kind: 'cycle-start', cycle: 1 })
+
+  // File-edit segment: pick the first available project from the shared store
+  // so `fs.changed` pushes fire, allowing PR-4/PR-5 tests to observe edits.
+  const changedFiles: string[] = []
+  const firstEntry = projects.entries().next()
+  if (!firstEntry.done) {
+    const [, project] = firstEntry.value
+    const editPath = 'agent-edit.txt'
+    const alreadyExists = project.files.has(editPath)
+    project.files.set(editPath, new TextEncoder().encode(`agent was here\n`))
+    // Push fs.changed to ALL project subscribers — the agent is a separate peer.
+    const fsMsg: PushMessage = {
+      type: 'fs.changed',
+      pid: project.pid,
+      path: editPath,
+      kind: alreadyExists ? 'updated' : 'created',
+    }
+    for (const sub of project.subscribers) sub.postMessage(fsMsg)
+    changedFiles.push(editPath)
+
+    push({
+      kind: 'tool-start',
+      toolCallId: 'dev-tc1',
+      tool: 'file_edit',
+      detail: { path: editPath },
+    })
+    push({
+      kind: 'tool-result',
+      toolCallId: 'dev-tc1',
+      ok: true,
+      summary: `wrote ${editPath}`,
+      filesChanged: [editPath],
+    })
+    push({ kind: 'cycle-start', cycle: 2 })
+  }
+
+  push({ kind: 'text-delta', delta: 'Hello ' })
+  push({ kind: 'text-delta', delta: 'from the agent stub!' })
+  push({ kind: 'text-done', text: 'Hello from the agent stub!' })
+  push({ kind: 'changes', files: changedFiles })
+  push({ kind: 'turn-done', turnId, status: 'ok' })
+
+  session.transcript.push({ role: 'assistant', content: 'Hello from the agent stub!' })
+  session.turnActive = false
 }
 
 // ── handler table ─────────────────────────────────────────────────────────────
@@ -416,12 +517,30 @@ const handlers: Record<string, Handler> = {
       if (!parent) return { ok: false, reason: 'not_found' }
       const reply: CommentReply = { id, author, body, createdAt }
       parent.replies.push(reply)
+      state.notifications.unshift({
+        id: `dev-n${state.notificationSeq++}`,
+        category: 'comments',
+        subject: 'New comment on your app',
+        body,
+        context: { projectId },
+        read: false,
+        createdAt,
+      })
       // Return a CommentNode shape (with empty replies) as the new node.
       return { id, author, body, createdAt, replies: [] } satisfies CommentNode
     }
 
     const node: CommentNode = { id, author, body, createdAt, replies: [] }
     list.unshift(node)
+    state.notifications.unshift({
+      id: `dev-n${state.notificationSeq++}`,
+      category: 'comments',
+      subject: 'New comment on your app',
+      body,
+      context: { projectId },
+      read: false,
+      createdAt,
+    })
     return node
   },
 
@@ -538,6 +657,17 @@ const handlers: Record<string, Handler> = {
     const was = state.favoriteCreators.has(targetId)
     if (was) state.favoriteCreators.delete(targetId)
     else state.favoriteCreators.add(targetId)
+    if (!was) {
+      state.notifications.unshift({
+        id: `dev-n${state.notificationSeq++}`,
+        category: 'followers',
+        subject: 'You have a new follower',
+        body: 'Someone started following you on myth.work.',
+        context: { followerUserId: (state.user as { userId: string }).userId },
+        read: false,
+        createdAt: Date.now(),
+      })
+    }
     return { ok: true, favorited: !was, count: state.favoriteCreators.size }
   },
 
@@ -588,6 +718,36 @@ const handlers: Record<string, Handler> = {
   'profile.setNotificationPrefs'(args, state) {
     Object.assign(state.notifPrefs, args)
     return { ...state.notifPrefs }
+  },
+
+  // ── notifications.* ────────────────────────────────────────────────────────
+
+  'notifications.list'(args, state) {
+    const limit = typeof args['limit'] === 'number' ? args['limit'] : 20
+    return { items: state.notifications.slice(0, limit), nextCursor: null }
+  },
+
+  'notifications.listUnread'(args, state) {
+    const limit = typeof args['limit'] === 'number' ? args['limit'] : 20
+    return { items: state.notifications.filter(n => !n.read).slice(0, limit), nextCursor: null }
+  },
+
+  'notifications.getUnreadCount'(_args, state) {
+    return { count: state.notifications.filter(n => !n.read).length }
+  },
+
+  'notifications.markRead'(args, state) {
+    const id = String(args['id'] ?? '')
+    const n = state.notifications.find(n => n.id === id)
+    if (n) n.read = true
+    return { ok: true }
+  },
+
+  'notifications.markUnread'(args, state) {
+    const id = String(args['id'] ?? '')
+    const n = state.notifications.find(n => n.id === id)
+    if (n) n.read = false
+    return { ok: true }
   },
 
   // ── kernel ─────────────────────────────────────────────────────────────────
@@ -901,6 +1061,82 @@ const handlers: Record<string, Handler> = {
     const roomId = scope === 'app' ? `dev:app:${name}` : `dev:${pid}:project:${name}`
     return { roomId, serverUrl: 'dev:relay', joinToken: undefined } satisfies RoomDescriptor
   },
+
+  // ── agent.* (hosted agent sessions — AI-SDK Layer 3) ──────────────────────
+
+  'agent.create'(args, state) {
+    if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
+    // v1 rejects custom tool declarations
+    if (Array.isArray(args['tools']) && (args['tools'] as unknown[]).length > 0) {
+      return { ok: false, reason: 'custom_tools_unsupported' }
+    }
+    const sessionId = `dev-session-${++state.agentSessionCounter}`
+    const session: DevAgentSession = {
+      sessionId,
+      turnActive: false,
+      pendingStop: false,
+      seq: 0,
+      turnCounter: 0,
+      transcript: [],
+    }
+    state.agentSessions.set(sessionId, session)
+    return { sessionId }
+  },
+
+  'agent.send'(args, state) {
+    if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
+    const sessionId = args['sessionId'] as string
+    const text = args['text'] as string
+    const session = state.agentSessions.get(sessionId)
+    if (!session) throw new Error(`agent.send: unknown session ${sessionId}`)
+    if (session.turnActive) return { ok: false, reason: 'turn_in_progress' }
+    session.turnActive = true
+    session.pendingStop = false
+    const turnId = `dev-turn-${++session.turnCounter}`
+    session.transcript.push({ role: 'user', content: text })
+    // Note: event script is scheduled asynchronously (via setTimeout in the
+    // post-response hook below) so turnActive stays true until the next tick —
+    // enabling turn_in_progress gating tests.
+    return { turnId }
+  },
+
+  'agent.answer'(args, state) {
+    if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
+    const sessionId = args['sessionId'] as string
+    const session = state.agentSessions.get(sessionId)
+    if (!session) throw new Error(`agent.answer: unknown session ${sessionId}`)
+    // Intentionally a no-op in the dev stub; no scripted question turn in v1.
+    return { ok: true }
+  },
+
+  'agent.stop'(args, state) {
+    if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
+    const sessionId = args['sessionId'] as string
+    const session = state.agentSessions.get(sessionId)
+    if (!session) throw new Error(`agent.stop: unknown session ${sessionId}`)
+    if (session.turnActive) session.pendingStop = true
+    return { ok: true }
+  },
+
+  'agent.state'(args, state) {
+    if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
+    const sessionId = args['sessionId'] as string
+    const session = state.agentSessions.get(sessionId)
+    if (!session) throw new Error(`agent.state: unknown session ${sessionId}`)
+    return {
+      status: session.turnActive ? 'active' : 'idle',
+      transcript: [...session.transcript],
+    }
+  },
+
+  'agent.dispose'(args, state) {
+    if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
+    const sessionId = args['sessionId'] as string
+    const session = state.agentSessions.get(sessionId)
+    if (!session) throw new Error(`agent.dispose: unknown session ${sessionId}`)
+    state.agentSessions.delete(sessionId)
+    return { ok: true }
+  },
 }
 
 // ── DevHost factory ───────────────────────────────────────────────────────────
@@ -1003,6 +1239,22 @@ export function createDevHost(opts?: {
     }
 
     hostPort.postMessage(response)
+
+    // Async agent event script: schedule AFTER the fast-ack so turnActive
+    // stays true until the next tick, enabling turn_in_progress gating.
+    if (req.method === 'agent.send' && !response.error) {
+      const sendResult = response.result as { turnId?: string } | undefined
+      const turnId = sendResult?.turnId
+      if (turnId) {
+        const sessionId = req.args['sessionId'] as string
+        const session = state.agentSessions?.get(sessionId)
+        if (session) {
+          setTimeout(() => {
+            runDevAgentTurn(hostPort, session, turnId)
+          }, 0)
+        }
+      }
+    }
 
     // Emit kernel.authChanged push after sign-in / sign-out (after the RPC
     // reply so subscribers receive the push after the promise resolves).

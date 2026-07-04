@@ -7,6 +7,7 @@
 // Subscribing to the full type (`'fs.changed'`) matches only that exact type.
 
 import type { User } from './data'
+import type { AgentEvent } from './methods'
 
 /**
  * The complete push-event map. Keys are the literal `type` strings; each value
@@ -93,6 +94,19 @@ export interface EventMap {
    * layer installs its own `requestId`-filtered listener directly.
    */
   'ai.delta': { requestId: string; delta: string }
+
+  /**
+   * @experimental An event push for an active agent session. `seq` is
+   * per-session monotonic; consumers detect gaps and recover via `agent.state`.
+   * Correlation is by `sessionId`. Note: unlike other events, `agent.event` is
+   * NOT namespaced under a project — it correlates to a session, not a file or
+   * project lifecycle.
+   */
+  'agent.event': {
+    sessionId: string
+    seq: number
+    event: AgentEvent
+  }
 }
 
 /** Every valid push-event `type` string. */

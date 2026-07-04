@@ -934,3 +934,50 @@ describe('dev host — prompt presets', () => {
     sdk.port.close()
   })
 })
+
+describe('notifications.*', () => {
+  let sdk: MythworkClient
+
+  beforeEach(async () => {
+    sdk = makeClient()
+    await sdk.auth.signIn()
+  })
+  afterEach(() => {
+    sdk.port.close()
+  })
+
+  it('notifications.list / listUnread / getUnreadCount reflect explore.addComment side effect', async () => {
+    await sdk.explore.addComment({ projectId: SEED_APPS[0]!.projectId, body: 'nice app' })
+
+    const { items } = await sdk.notifications.list()
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ category: 'comments', read: false })
+
+    const { count } = await sdk.notifications.getUnreadCount()
+    expect(count).toBe(1)
+
+    const { items: unread } = await sdk.notifications.listUnread()
+    expect(unread).toHaveLength(1)
+  })
+
+  it('notifications.markRead / markUnread round-trip', async () => {
+    await sdk.explore.addComment({ projectId: SEED_APPS[0]!.projectId, body: 'nice app' })
+    const { items } = await sdk.notifications.list()
+    const id = items[0]!.id
+
+    await sdk.notifications.markRead({ id })
+    expect((await sdk.notifications.getUnreadCount()).count).toBe(0)
+
+    await sdk.notifications.markUnread({ id })
+    expect((await sdk.notifications.getUnreadCount()).count).toBe(1)
+  })
+
+  it('profile.setFavorite on a creator pushes a followers notification only on the follow transition', async () => {
+    await sdk.profile.setFavorite({ targetKind: 'creator', targetId: 'someone_else' })
+    expect((await sdk.notifications.getUnreadCount()).count).toBe(1)
+
+    // Un-favoriting (the second toggle) must NOT push a second notification.
+    await sdk.profile.setFavorite({ targetKind: 'creator', targetId: 'someone_else' })
+    expect((await sdk.notifications.getUnreadCount()).count).toBe(1)
+  })
+})

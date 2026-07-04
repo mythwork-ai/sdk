@@ -315,6 +315,27 @@ export interface NotificationPrefs {
 
 /**
  * @experimental — API may still evolve before 1.0.
+ */
+export type NotificationCategory = 'comments' | 'remixes' | 'followers' | 'weeklyDigest'
+
+/**
+ * @experimental — API may still evolve before 1.0.
+ *
+ * One row in the viewer's notification inbox. `read` is derived server-side
+ * from the stored `read_at` timestamp.
+ */
+export interface NotificationInboxItem {
+  id: string
+  category: NotificationCategory
+  subject: string
+  body: string
+  context: Record<string, unknown>
+  read: boolean
+  createdAt: number
+}
+
+/**
+ * @experimental — API may still evolve before 1.0.
  *
  * Sort order for `explore.listApps`. `'popular'` ranks by launches,
  * `'new'` by `publishedAt`, `'trending'` by the 7d-vs-prev-7d trend.
