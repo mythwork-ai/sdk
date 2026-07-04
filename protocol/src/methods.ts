@@ -921,13 +921,14 @@ export interface MethodMap {
    * only — values are NEVER returned to app code (the host stores them
    * AES-256-GCM encrypted in `/.env`; only the host frame can decrypt them).
    * The projectId is derived host-side from the trusted current-project
-   * context — there are NO client params. A local-only or unauthenticated
-   * project resolves `{ names: [] }`. Entries named `PROMPT_<NAME>` back
-   * agent persona presets (e.g. `PROMPT_GAIAD_VOICE` ↔ persona `gaiad_voice`).
-   * Wire: `env.list`.
+   * context. Pass `pid` to target an open project the IDE has opened (e.g.
+   * an IDE app editing a project that is not its own ctx). A local-only or
+   * unauthenticated project resolves `{ names: [] }`. Entries named
+   * `PROMPT_<NAME>` back agent persona presets (e.g. `PROMPT_GAIAD_VOICE` ↔
+   * persona `gaiad_voice`). Wire: `env.list`.
    */
   'env.list': {
-    params: Record<string, never>
+    params: { pid?: string }
     result: { names: string[] }
   }
 
@@ -937,12 +938,14 @@ export interface MethodMap {
    * plaintext values — same isolation boundary that protects the sign-in
    * surface). The editor shows entry names, masked values, and controls to
    * add, edit, and delete entries; Save encrypts all values and commits
-   * `/.env`. Resolves `{ ok: true }` when the user saves, `{ ok: false }`
-   * when the popup is cancelled or unavailable (signed-out or local-only
-   * project). Wire: `env.open`.
+   * `/.env`. Pass `pid` to target an open project the IDE has opened (e.g.
+   * an IDE app editing a project that is not its own ctx). Resolves
+   * `{ ok: true }` when the user saves, `{ ok: false }` when the popup is
+   * cancelled or unavailable (signed-out, local-only project, or pid not
+   * open). Wire: `env.open`.
    */
   'env.open': {
-    params: Record<string, never>
+    params: { pid?: string }
     result: { ok: boolean }
   }
 

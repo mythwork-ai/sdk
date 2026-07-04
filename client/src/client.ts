@@ -335,18 +335,25 @@ export class MythworkClient {
     /**
      * List env-entry NAMES for the current project (names only — values are
      * never returned to app code). The host derives the projectId from its
-     * trusted current-project context; this takes no params. A local-only or
-     * unauthenticated project resolves `{ names: [] }`. Wire: `env.list`.
+     * trusted current-project context. Pass `pid` to target a project the
+     * IDE has opened via `project.open` — the host validates that `pid`
+     * against its open-project map; an unrecognised pid resolves
+     * `{ names: [] }`. A local-only or unauthenticated project resolves
+     * `{ names: [] }`. Wire: `env.list`.
      */
-    list: (opts?: RequestOptions) => this.request('env.list', {}, opts),
+    list: (params?: { pid?: string }, opts?: RequestOptions) =>
+      this.request('env.list', params ?? {}, opts),
     /**
      * Open the host-owned project-env editor popup. The host renders the
      * editor in its own DOM; the app cannot observe keystrokes or plaintext
      * values (same isolation boundary that protects the sign-in surface).
-     * Resolves `{ ok: true }` when saved, `{ ok: false }` when cancelled or
-     * unavailable (signed-out or local-only project). Wire: `env.open`.
+     * Pass `pid` to target a project the IDE has opened via `project.open` —
+     * the host validates that `pid` against its open-project map; an
+     * unrecognised pid resolves `{ ok: false }`. Resolves `{ ok: true }` when
+     * saved, `{ ok: false }` when cancelled or unavailable. Wire: `env.open`.
      */
-    open: (opts?: RequestOptions) => this.request('env.open', {}, opts),
+    open: (params?: { pid?: string }, opts?: RequestOptions) =>
+      this.request('env.open', params ?? {}, opts),
   }
 
   // ── event.* ───────────────────────────────────────────────────────────────
