@@ -324,6 +324,53 @@ describe('@mythwork/sdk/react — collab room', () => {
       expect(api.queryByTestId('ready')?.textContent).toBe('disconnected|ok')
     })
   })
+
+  it('does not attempt a websocket when collab.openRoom RESOLVES with the local descriptor', async () => {
+    // Regression: an unassociated project's `collab.openRoom` bridge handler
+    // does not reject — it resolves cleanly with `{ roomId: 'local:...',
+    // serverUrl: '' }` (see packages/host-iframe/src/bridges/collab.ts). The
+    // previous guard only checked `degradedToLocal` (set on a REJECTED
+    // openRoom call) and the caller-supplied `local` option — a resolved
+    // local descriptor fell through to `connectWebsocket = true` with an
+    // empty serverUrl, and y-websocket resolved that against the current
+    // page origin, producing a real (CSP-blocked) connection attempt.
+    _setProviderFactoryForTests(() => {
+      throw new Error('provider must not be constructed for a resolved local descriptor')
+    })
+    const chan = new MessageChannel()
+    chan.port2.start()
+    chan.port2.onmessage = (e: MessageEvent) => {
+      const { id, method, args } = e.data as {
+        id: string
+        method: string
+        args: Record<string, unknown>
+      }
+      if (method === 'project.open') {
+        chan.port2.postMessage({ id, result: { pid: args.pid, role: 'leader' } })
+      } else if (method === 'collab.openRoom') {
+        chan.port2.postMessage({ id, result: { roomId: 'local:project:editor', serverUrl: '' } })
+      } else {
+        chan.port2.postMessage({ id, result: {} })
+      }
+    }
+    const client = new MythworkClient(chan.port1)
+
+    function Probe(): React.JSX.Element {
+      const { doc, roomId, status } = useCollabRoom({ name: 'editor' })
+      if (!doc) return <div data-testid="loading">loading</div>
+      return <div data-testid="ready">{`${roomId}|${status}`}</div>
+    }
+    const api = render(
+      <MythworkProvider connect={() => Promise.resolve(client)}>
+        <MythworkProjectProvider pid="pUnassociated">
+          <Probe />
+        </MythworkProjectProvider>
+      </MythworkProvider>,
+    )
+    await waitFor(() => {
+      expect(api.queryByTestId('ready')?.textContent).toBe('local:project:editor|disconnected')
+    })
+  })
 })
 
 describe('@mythwork/sdk/react — base platform contract (explore)', () => {

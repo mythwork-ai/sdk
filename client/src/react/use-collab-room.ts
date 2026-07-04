@@ -298,7 +298,14 @@ async function acquireRoom(
             )
             return localDescriptor
           })
-    const connectWebsocket = !localOnly && !degradedToLocal && !opts.noWebsocket
+    // `degradedToLocal` only catches a REJECTED openRoom call. An unassociated
+    // project's bridge handler resolves cleanly with the local descriptor
+    // itself (roomId `local:<scope>:<name>`, serverUrl '') — the room
+    // genuinely doesn't exist yet, not a transient failure — so treat a
+    // resolved-but-serverless result the same as a rejection: no websocket.
+    // (joinToken is legitimately absent for the dev-host relay, which uses
+    // its own in-memory bridge with no HMAC — only serverUrl signals "local".)
+    const connectWebsocket = !localOnly && !degradedToLocal && !opts.noWebsocket && serverUrl !== ''
     const doc = new Y.Doc()
     const awareness = new Awareness(doc)
     const room: SharedRoom = {
