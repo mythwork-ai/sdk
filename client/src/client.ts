@@ -322,6 +322,33 @@ export class MythworkClient {
     list: (opts?: RequestOptions) => this.request('prompts.list', {}, opts),
   }
 
+  // ── env.* ─────────────────────────────────────────────────────────────────
+  /**
+   * @experimental Per-project encrypted env store. Values are AES-256-GCM
+   * encrypted in the project's `/.env` file; the platform-derived KEK is
+   * held only by the host frame and never exposed to app code. Entries named
+   * `PROMPT_<NAME>` back agent persona presets (e.g. `PROMPT_GAIAD_VOICE` ↔
+   * persona `gaiad_voice`). App code can learn entry names but never their
+   * values — editing always happens in the host-owned popup (`env.open`).
+   */
+  readonly env = {
+    /**
+     * List env-entry NAMES for the current project (names only — values are
+     * never returned to app code). The host derives the projectId from its
+     * trusted current-project context; this takes no params. A local-only or
+     * unauthenticated project resolves `{ names: [] }`. Wire: `env.list`.
+     */
+    list: (opts?: RequestOptions) => this.request('env.list', {}, opts),
+    /**
+     * Open the host-owned project-env editor popup. The host renders the
+     * editor in its own DOM; the app cannot observe keystrokes or plaintext
+     * values (same isolation boundary that protects the sign-in surface).
+     * Resolves `{ ok: true }` when saved, `{ ok: false }` when cancelled or
+     * unavailable (signed-out or local-only project). Wire: `env.open`.
+     */
+    open: (opts?: RequestOptions) => this.request('env.open', {}, opts),
+  }
+
   // ── event.* ───────────────────────────────────────────────────────────────
   /** Generic event reporting. Maps to `event.sendBatch`. */
   readonly event = {

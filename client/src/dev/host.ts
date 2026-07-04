@@ -848,6 +848,25 @@ const handlers: Record<string, Handler> = {
     return { names: [] as string[] }
   },
 
+  // ── env.* (host-owned project env store; dev stub — no encrypted backing) ────
+  // In production the host reads/writes `/.env` in the project tree (AES-256-GCM,
+  // per-project KEK). The dev stub keeps an in-memory empty name set and resolves
+  // env.open immediately — the real editor popup is host-side UI not available in
+  // the dev host.
+  'env.list'() {
+    return { names: [] as string[] }
+  },
+
+  'env.open'() {
+    // The real host renders an editor popup in its own DOM; the app cannot observe
+    // keystrokes or plaintext values. The dev stub resolves immediately with ok:true.
+    // To exercise the real editor, run against a deployed host.
+    console.log(
+      '[dev host] env.open: the project-env editor is host-owned and not available in the dev stub. Resolving { ok: true }.',
+    )
+    return { ok: true }
+  },
+
   // ── project (shared store) ───────────────────────────────────────────────────
 
   'project.create'(args, _state, ctx) {

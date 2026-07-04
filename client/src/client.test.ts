@@ -170,6 +170,8 @@ describe('namespaced helper → wire method mapping', () => {
       'event.sendBatch',
       { batch: [{ message: 'boom' }] },
     ],
+    ['env.list', () => client.env.list(), 'env.list', {}],
+    ['env.open', () => client.env.open(), 'env.open', {}],
   ]
 
   for (const [label, invoke, wireMethod, wireArgs] of cases) {

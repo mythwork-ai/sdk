@@ -908,6 +908,44 @@ export interface MethodMap {
     result: { names: string[] } | { ok: false; reason: string }
   }
 
+  // ── env.* ─────────────────────────────────────────────────────────────────
+  // Per-project encrypted env store. Values are stored in a `/.env` file in
+  // the project tree, AES-256-GCM encrypted with a per-project KEK derived by
+  // the platform. The KEK is never exposed to app code; only the host frame
+  // can decrypt. Entries named `PROMPT_<NAME>` back agent persona presets.
+  // No env.get in v1 — app-readable secret values need their own threat
+  // modeling (see design doc: docs/superpowers/specs/2026-07-03-project-env-store-design.md).
+
+  /**
+   * @experimental List env-entry NAMES for the current project. Returns names
+   * only — values are NEVER returned to app code (the host stores them
+   * AES-256-GCM encrypted in `/.env`; only the host frame can decrypt them).
+   * The projectId is derived host-side from the trusted current-project
+   * context — there are NO client params. A local-only or unauthenticated
+   * project resolves `{ names: [] }`. Entries named `PROMPT_<NAME>` back
+   * agent persona presets (e.g. `PROMPT_GAIAD_VOICE` ↔ persona `gaiad_voice`).
+   * Wire: `env.list`.
+   */
+  'env.list': {
+    params: Record<string, never>
+    result: { names: string[] }
+  }
+
+  /**
+   * @experimental Open the host-owned project-env editor popup. The host
+   * renders the editor in its own DOM (app code cannot observe keystrokes or
+   * plaintext values — same isolation boundary that protects the sign-in
+   * surface). The editor shows entry names, masked values, and controls to
+   * add, edit, and delete entries; Save encrypts all values and commits
+   * `/.env`. Resolves `{ ok: true }` when the user saves, `{ ok: false }`
+   * when the popup is cancelled or unavailable (signed-out or local-only
+   * project). Wire: `env.open`.
+   */
+  'env.open': {
+    params: Record<string, never>
+    result: { ok: boolean }
+  }
+
   // ── event.* ─────────────────────────────────────────────────────────────
 
   /**

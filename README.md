@@ -59,6 +59,28 @@ esbuild, tsc) compile the source. No pre-built `dist/` directory is included.
 This keeps the packages small and avoids a separate build step in the publishing
 repo.
 
+## Per-project encrypted env store (`sdk.env`)
+
+`sdk.env` exposes two methods. Values are stored AES-256-GCM encrypted in a
+`/.env` file committed to the project's git tree; the platform-derived KEK is
+held only by the host frame and never exposed to app code.
+
+| Method | Result | Notes |
+|---|---|---|
+| `sdk.env.list()` | `{ names: string[] }` | Names only — values are never returned to app code. Local-only or unauthenticated project resolves `{ names: [] }`. |
+| `sdk.env.open()` | `{ ok: boolean }` | Opens the host-owned editor popup. Resolves `{ ok: true }` on save, `{ ok: false }` on cancel, or if the project is local-only or unsigned-in. |
+
+**No `env.get()` in v1** — app-readable runtime secret values need separate threat
+modeling; deferred to future work. The runtime consumer today is the host-side
+agent bridge.
+
+**`PROMPT_<NAME>` namespace:** entries named `PROMPT_<PERSONA>` (e.g.
+`PROMPT_GAIAD_VOICE` for persona `gaiad_voice`) back agent persona presets.
+The agent bridge resolves persona text from the env store before falling back to
+the legacy `project_prompts` path. See
+[`docs/2026-07-03-project-env-store.md`](../docs/2026-07-03-project-env-store.md)
+for the full key-derivation, threat model, and resolution-order details.
+
 ## Design document
 
 Full rationale, wire compatibility notes, and implementation phases:

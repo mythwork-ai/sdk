@@ -935,6 +935,22 @@ describe('dev host — prompt presets', () => {
   })
 })
 
+describe('dev host — env store', () => {
+  it('env.list resolves to { names: [] } in dev', async () => {
+    const sdk = await connect({ dev: true })
+    const res = await sdk.env.list()
+    expect(res).toEqual({ names: [] })
+    sdk.port.close()
+  })
+
+  it('env.open resolves to { ok: true } in dev', async () => {
+    const sdk = await connect({ dev: true })
+    const res = await sdk.env.open()
+    expect(res).toEqual({ ok: true })
+    sdk.port.close()
+  })
+})
+
 describe('notifications.*', () => {
   let sdk: MythworkClient
 
