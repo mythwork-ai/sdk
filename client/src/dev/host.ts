@@ -875,8 +875,8 @@ const handlers: Record<string, Handler> = {
   // ── project (shared store) ───────────────────────────────────────────────────
 
   'project.create'(args, _state, ctx) {
-    // 17-char lowercase-alphanumeric pid, mirroring real canonical/local ids
-    // (apps route on `/.../<id>` with an `[a-z0-9]{17}` shape).
+    // Dev-mock pid: sequential prefix for stable test output. Production hosts
+    // draw a canonical p-prefixed 33-char Crockford id from a server-side pool.
     const pid = `dev${String(pidSeq++).padStart(14, '0')}`
     const project = ensureProject(pid)
     project.name = (args['projectName'] as string | undefined) ?? pid

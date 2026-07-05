@@ -28,7 +28,7 @@ export interface MythworkProjectProviderProps {
   /** Open an existing project by local handle id. */
   pid?: string
   /** Or create a new project with these params (used when `pid` is absent). */
-  create?: { projectName?: string; localId?: string }
+  create?: { projectName?: string }
 }
 
 /**
@@ -68,7 +68,7 @@ export function MythworkProjectProvider({
       cancelled = true
       if (pid) void sdk.project.close({ pid }).catch(() => {})
     }
-  }, [sdk, pid, create?.projectName, create?.localId])
+  }, [sdk, pid, create?.projectName])
 
   return <ProjectCtx.Provider value={state}>{children}</ProjectCtx.Provider>
 }

@@ -1,6 +1,6 @@
 {
   "name": "@mythwork/sdk",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "type": "module",
   "license": "MIT",
   "description": "The Mythwork inner-app client: port handshake, typed request() against the method map, subscribe() against the event map, and thin namespaced helpers (sdk.fs.read, sdk.auth.getUser, ...). Dependency-free except @mythwork/protocol.",

@@ -401,7 +401,7 @@ export function useCollabRoom(
     const onAwarenessChange = (): void => {
       if (!awarenessTarget) return
       const users: CollaboratorInfo[] = []
-      const localId = awarenessTarget.clientID
+      const selfClientId = awarenessTarget.clientID
       awarenessTarget.getStates().forEach((state, clientId) => {
         const user = (state as Record<string, unknown>).user as AwarenessUserState | undefined
         if (!user) return
@@ -411,7 +411,7 @@ export function useCollabRoom(
           color: user.color ?? '#999',
           currentFile: user.currentFile ?? '',
           viewingSha: user.viewingSha ?? null,
-          isLocal: clientId === localId,
+          isLocal: clientId === selfClientId,
           picture: user.picture ?? null,
           email: user.email ?? null,
         })

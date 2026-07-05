@@ -40,14 +40,6 @@ export interface EventMap {
     | { kind: 'project:leader-changed'; pid: string }
 
   /**
-   * A local-only project was associated with a canonical projectId (e.g. on the
-   * first signed-in server op), so the app can upgrade its URL from the localId
-   * to the shareable canonical id. The `pid` (localId) is unchanged;
-   * `projectId` is the newly-available canonical id.
-   */
-  'project.associated': { pid: string; projectId: string }
-
-  /**
    * A project's display name changed (typically because collab sync delivered an
    * updated config). `name` is `null` when the config read transiently yields
    * no name.

@@ -83,7 +83,7 @@ export interface MethodDescriptor {
 }
 
 /**
- * @experimental The descriptor table. Covers the explore namespace (all 14
+ * @experimental The descriptor table. Covers the explore namespace (all 16
  * methods), the profile namespace methods, and the `ai.*` namespace (which
  * binds to the separate `mythwork-ai` worker, not the api worker). Host-local
  * namespaces never appear here.
@@ -112,6 +112,14 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
   },
   'explore.trendingApps': {
     http: { verb: 'GET', path: '/explore/trending' },
+    auth: { signedOut: 'optional', onError: 'throw' },
+  },
+  'explore.appOfDay': {
+    http: { verb: 'GET', path: '/explore/app-of-day' },
+    auth: { signedOut: 'optional', onError: 'throw' },
+  },
+  'explore.popularWeek': {
+    http: { verb: 'GET', path: '/explore/popular-week' },
     auth: { signedOut: 'optional', onError: 'throw' },
   },
   'explore.tags': {

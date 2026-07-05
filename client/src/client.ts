@@ -139,9 +139,6 @@ export class MythworkClient {
     /** Subscribe to project lifecycle transitions. Wire event: `project.lifecycle`. */
     onLifecycle: (handler: EventHandler<'project.lifecycle'>) =>
       this.subscribe('project.lifecycle', handler),
-    /** Subscribe to localId→canonical-id association. Wire event: `project.associated`. */
-    onAssociated: (handler: EventHandler<'project.associated'>) =>
-      this.subscribe('project.associated', handler),
     /** Subscribe to project display-name changes. Wire event: `project.namesChanged`. */
     onNamesChanged: (handler: EventHandler<'project.namesChanged'>) =>
       this.subscribe('project.namesChanged', handler),
@@ -534,6 +531,18 @@ export class MythworkClient {
      */
     trendingApps: (params: MethodParams<'explore.trendingApps'> = {}, opts?: RequestOptions) =>
       this.request('explore.trendingApps', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Today's App of the
+     * Day. Wire: `explore.appOfDay`.
+     */
+    appOfDay: (params: MethodParams<'explore.appOfDay'> = {}, opts?: RequestOptions) =>
+      this.request('explore.appOfDay', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. This week's popular
+     * apps. Wire: `explore.popularWeek`.
+     */
+    popularWeek: (params: MethodParams<'explore.popularWeek'> = {}, opts?: RequestOptions) =>
+      this.request('explore.popularWeek', params, opts),
     /**
      * @experimental — API may still evolve before 1.0. Every tag with its app
      * count. Wire: `explore.tags`.

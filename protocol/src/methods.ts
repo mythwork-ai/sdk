@@ -186,17 +186,17 @@ export interface MethodMap {
   // ── project.* ───────────────────────────────────────────────────────────
 
   /**
-   * Create a new local-first project (mints a localId host-side, zero network).
-   * The canonical projectId is provisioned lazily on the first signed-in server
-   * op. An explicit `localId` is honored for deterministic callers.
+   * Create a new project; the host draws a pooled canonical id server-side (zero
+   * network). `projectName` seeds the display name; `parentProjectId` encodes a
+   * parent for collab-server indexing. `open` takes an existing canonical id.
    */
   'project.create': {
-    params: { projectName?: string; localId?: string; parentProjectId?: string }
+    params: { projectName?: string; parentProjectId?: string }
     result: ProjectInfo
   }
   /**
-   * Open an existing project by id (localId or canonical). The returned `pid`
-   * is the local registry key even when a canonical id was passed.
+   * Open an existing project by its canonical id. The returned `pid` is the
+   * local registry key (same as the canonical id in the single-canonical-id model).
    */
   'project.open': { params: { pid: string }; result: ProjectInfo }
   /** Close an open project, draining its resources and registry tracking entry. */
@@ -547,6 +547,26 @@ export interface MethodMap {
    * Backing: app_stats.
    */
   'explore.trendingApps': {
+    params: Record<string, never>
+    result: { items: AppSummary[] }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Today's App of the Day — launches_24h primary, gated by a minimum
+   * bayesian rating (AGE-113). Public read. Backing: app_stats.
+   */
+  'explore.appOfDay': {
+    params: Record<string, never>
+    result: { items: AppSummary[] }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * This week's remix-weighted popularity (remix term pending Phase F,
+   * currently 0) (AGE-113). Public read. Backing: app_stats.
+   */
+  'explore.popularWeek': {
     params: Record<string, never>
     result: { items: AppSummary[] }
   }

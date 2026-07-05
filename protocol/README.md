@@ -98,8 +98,8 @@ without authentication. "Auth-gated" means the host requires a signed-in session
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
-| `project.create` | `{ projectName?: string; localId?: string; parentProjectId?: string }` | `ProjectInfo` | Creates a local-first project; canonical id provisioned lazily on first signed-in server op |
-| `project.open` | `{ pid: string }` | `ProjectInfo` | Open by localId or canonical id; returned `pid` is always the local registry key |
+| `project.create` | `{ projectName?: string; parentProjectId?: string }` | `ProjectInfo` | Creates a project; host draws a canonical id from a pool (zero network) |
+| `project.open` | `{ pid: string }` | `ProjectInfo` | Open by canonical id; returned `pid` is the local registry key |
 | `project.close` | `{ pid: string }` | `Ok` | Drain resources and registry entry |
 | `project.list` | `{}` | `{ pids: string[] }` | All project ids this device knows about |
 | `project.delete` | `{ pid: string }` | `Ok` | Permanently delete local data |
@@ -235,7 +235,6 @@ the `type` field.
 |---|---|---|
 | `fs.changed` | `{ pid: string; path: string; kind: 'created' \| 'updated' \| 'deleted' }` | File changed in the project |
 | `project.lifecycle` | `{ kind: 'project:opened' \| 'project:closed' \| 'project:created' \| 'project:deleted'; pid: string }` or `{ kind: 'project:renamed'; pid: string; newName: string }` or `{ kind: 'project:leader-changed'; pid: string }` | Project lifecycle transition; `newName` present only on `'project:renamed'` |
-| `project.associated` | `{ pid: string; projectId: string }` | Local-only project gained a canonical id; app can upgrade its URL |
 | `project.namesChanged` | `{ pid: string; name: string \| null }` | Display name updated (e.g. via collab sync); `null` when config transiently yields no name |
 | `project.descriptionChanged` | `{ pid: string; description: string \| null }` | Top-level package.json `description` updated (e.g. via collab sync or `project.setDescription`); `null` when unset |
 | `db.change` | `{ store: string; key: string; value: unknown; deleted: boolean }` | @internal Key-value store entry changed; `value` is `null` and `deleted` is `true` on delete |
