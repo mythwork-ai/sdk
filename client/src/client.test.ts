@@ -72,6 +72,12 @@ describe('namespaced helper → wire method mapping', () => {
       { pid: 'p', docName: 'd' },
     ],
     ['profile.get', () => client.profile.get({ handle: 'h' }), 'profile.get', { handle: 'h' }],
+    [
+      'nav.reportLocation',
+      () => client.nav.reportLocation({ path: '/showcase' }),
+      'nav.reportLocation',
+      { path: '/showcase' },
+    ],
     // explore surface wire-routing (project.remix below is still draft).
     [
       'explore.listApps',
@@ -466,6 +472,15 @@ describe('event helpers route to the right push prefix', () => {
     chan.port2.postMessage({ type: 'kernel.authChanged', user: { kind: 'anonymous', userId: 'a' } })
     await flush()
     expect(hits).toHaveLength(1)
+  })
+
+  it('nav.onNavigate receives nav.navigate pushes', async () => {
+    const hits: { path: string }[] = []
+    client.nav.onNavigate(p => hits.push(p))
+    chan.port2.postMessage({ type: 'nav.navigate', path: '/showcase' })
+    await flush()
+    expect(hits).toHaveLength(1)
+    expect(hits[0]?.path).toBe('/showcase')
   })
 })
 

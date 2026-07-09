@@ -1070,6 +1070,13 @@ const handlers: Record<string, Handler> = {
     return { ok: true }
   },
 
+  // Standalone dev (Vite/tests) has no host iframe wrapping the app, so there
+  // is no real address bar to mirror — the app's own router already owns it
+  // directly. No-op; just satisfy the wire contract.
+  'nav.reportLocation'() {
+    return { ok: true }
+  },
+
   // ── collab ───────────────────────────────────────────────────────────────────
 
   'collab.openRoom'(args) {

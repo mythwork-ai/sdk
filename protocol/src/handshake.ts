@@ -71,18 +71,24 @@ export interface OcPingMessage {
  * MessagePort in the transfer list. `shareBaseOrigin` is the OUTER host-frame
  * origin (the alias/canonical origin the page is served on) the inner app uses
  * to build share links — it never reaches back out to that origin, it only
- * reads the string.
+ * reads the string. `initialPath` is the host's real top-level path at the
+ * moment it created the iframe (deep link, refresh, or restored back/forward
+ * state) — an app should boot its router there instead of always mounting at
+ * `/`. Omitted on host builds that predate this field; the app falls back to
+ * its own default route.
  */
 export interface OcInitMessage {
   type: typeof OC_INIT
   shareBaseOrigin: string
+  initialPath?: string
 }
 
 /**
  * Shape of the `window.__oc` global the inner-app shim maintains. `port` is the
  * MessagePort transferred via {@link OcInitMessage}, present once the handshake
- * completes.
+ * completes. `initialPath` mirrors {@link OcInitMessage.initialPath}.
  */
 export interface OcGlobal {
   port?: MessagePort
+  initialPath?: string
 }

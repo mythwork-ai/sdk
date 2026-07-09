@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { acquirePort, type HandshakeEnv, NO_PORT_ERROR } from './handshake'
+import { acquirePort, getInitialPath, type HandshakeEnv, NO_PORT_ERROR } from './handshake'
 import type { OcGlobal } from '@mythwork/protocol'
 
 // A fake HandshakeEnv: an in-process EventTarget standing in for `window`, plus
@@ -14,10 +14,12 @@ class FakeEnv implements HandshakeEnv {
   readonly pings: unknown[] = []
   /** When set, the host replies to each ping by transferring this port via oc-init. */
   private hostPort: MessagePort | null = null
+  private hostInitialPath: string | undefined
   private embedded = true
 
-  setHostPort(port: MessagePort | null) {
+  setHostPort(port: MessagePort | null, initialPath?: string) {
     this.hostPort = port
+    this.hostInitialPath = initialPath
   }
   setEmbedded(v: boolean) {
     this.embedded = v
@@ -43,7 +45,11 @@ class FakeEnv implements HandshakeEnv {
         data?: unknown
         ports?: readonly MessagePort[]
       }
-      evt.data = { type: 'oc-init', shareBaseOrigin: 'https://lab.example' }
+      evt.data = {
+        type: 'oc-init',
+        shareBaseOrigin: 'https://lab.example',
+        initialPath: this.hostInitialPath,
+      }
       evt.ports = [port]
       this.dispatchEvent(evt)
     }
@@ -106,5 +112,27 @@ describe('acquirePort', () => {
     const assertion = expect(p).rejects.toThrow(NO_PORT_ERROR)
     await vi.advanceTimersByTimeAsync(5000)
     await assertion
+  })
+
+  it('path (b): captures the host-supplied initialPath alongside the port', async () => {
+    const env = new FakeEnv()
+    const chan = new MessageChannel()
+    env.setHostPort(chan.port2, '/showcase')
+    await acquirePort(env)
+    expect(getInitialPath(env)).toBe('/showcase')
+    chan.port1.close()
+    chan.port2.close()
+  })
+})
+
+describe('getInitialPath', () => {
+  it('is undefined when the host never supplied one (e.g. a build that predates this field)', async () => {
+    const env = new FakeEnv()
+    const chan = new MessageChannel()
+    env.setHostPort(chan.port2) // no initialPath
+    await acquirePort(env)
+    expect(getInitialPath(env)).toBeUndefined()
+    chan.port1.close()
+    chan.port2.close()
   })
 })

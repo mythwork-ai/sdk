@@ -31,7 +31,15 @@ import {
  * exact match, or a namespace prefix (e.g. `'fs'`) that also matches every
  * `'fs.*'` event. These are the prefixes the namespaced event helpers use.
  */
-export type EventPrefix = 'fs' | 'project' | 'db' | 'kernel' | 'publish' | 'collab' | 'agent'
+export type EventPrefix =
+  | 'fs'
+  | 'project'
+  | 'db'
+  | 'kernel'
+  | 'publish'
+  | 'collab'
+  | 'agent'
+  | 'nav'
 
 /** Handler for a typed event subscription; receives the event's full payload. */
 export type EventHandler<E extends ProtocolEvent> = (payload: EventPayload<E>) => void
@@ -764,7 +772,14 @@ export class MythworkClient {
   }
 
   // ── nav.* ─────────────────────────────────────────────────────────────────
-  /** Host-mediated top-level browser navigation. Maps to `nav.*`. */
+  /**
+   * Host-mediated top-level browser navigation, plus the in-app-routing <->
+   * real-address-bar bridge (see the wire-level rationale on
+   * `nav.reportLocation`/`nav.navigate`). Call `reportLocation` on every
+   * route change so the host mirrors it in the real address bar; subscribe
+   * via `onNavigate` to move the app's own router when the host reports a
+   * top-level back/forward — neither direction reloads the iframe.
+   */
   readonly nav = {
     /** Host-mediated top-level browser navigation. First-party apps only —
      *  throws for other callers. Wire: `nav.topLevel`. */
@@ -772,6 +787,11 @@ export class MythworkClient {
       params: MethodParams<'nav.topLevel'> = { target: 'explore' },
       opts?: RequestOptions,
     ) => this.request('nav.topLevel', params, opts),
+    /** Report the app's current in-app path. Wire: `nav.reportLocation`. */
+    reportLocation: (params: MethodParams<'nav.reportLocation'>, opts?: RequestOptions) =>
+      this.request('nav.reportLocation', params, opts),
+    /** Subscribe to host-initiated navigation. Wire event: `nav.navigate`. */
+    onNavigate: (handler: EventHandler<'nav.navigate'>) => this.subscribe('nav.navigate', handler),
   }
 }
 

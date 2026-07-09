@@ -99,6 +99,18 @@ export interface EventMap {
     seq: number
     event: AgentEvent
   }
+
+  /**
+   * The host wants the app to move to a different in-app path — issued when
+   * the user presses the browser's back/forward at the top level, or the host
+   * resolves a fresh top-level load whose real address bar already pointed
+   * past the app's default route. The app should perform an in-place
+   * client-side route change (its router's `navigate(path, { replace: true
+   * })`), not treat this as an external link — the point is to update the
+   * already-running app without recreating (reloading) the iframe. Pairs with
+   * `nav.reportLocation`, the app -> host direction (see the method map).
+   */
+  'nav.navigate': { path: string }
 }
 
 /** Every valid push-event `type` string. */

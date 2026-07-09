@@ -24,13 +24,14 @@ export { MythworkClient } from './client'
 export type { EventHandler, EventPrefix } from './client'
 export { requestOverPort, streamOverPort, PushRouter } from './transport'
 export type { RequestOptions, StreamOptions, PushHandler } from './transport'
-export { acquirePort, browserEnv, NO_PORT_ERROR } from './handshake'
+export { acquirePort, browserEnv, getInitialPath, NO_PORT_ERROR } from './handshake'
 export type { HandshakeEnv, HandshakeOptions } from './handshake'
 
 // Top-level auth-consume: obtain + use the platform session from a page with NO
 // host frame (the landing site, a served app's own chrome) via the auth-iframe
 // postMessage bridge + the `/signin` redirect entry.
 export { connectAuth, browserAuthEnv } from './auth'
+export { zoneHost } from './zone'
 export type {
   AuthConsumer,
   AuthUser,

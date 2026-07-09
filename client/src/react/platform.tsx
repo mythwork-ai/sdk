@@ -42,6 +42,8 @@ export interface MythworkContextValue {
   signIn(): Promise<void>
   /** Sign out the platform session. */
   signOut(): Promise<void>
+  /** Reset and re-run the connect handshake — recovers from `unavailable` without a page reload. */
+  retry(): void
 }
 
 const MythworkCtx = createContext<MythworkContextValue>({
@@ -50,6 +52,7 @@ const MythworkCtx = createContext<MythworkContextValue>({
   authStatus: 'loading',
   signIn: async () => {},
   signOut: async () => {},
+  retry: () => {},
 })
 
 export interface MythworkProviderProps {
@@ -78,11 +81,15 @@ export function MythworkProvider({
   const [sdk, setSdk] = useState<MythworkClient | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [unavailable, setUnavailable] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const unsubRef = useRef<(() => void) | null>(null)
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: connect once for the provider's lifetime — connect/connectOptions are intentionally excluded so a new prop identity never forces a reconnect.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: connect/connectOptions are intentionally excluded so a new prop identity never forces a reconnect; attempt is included so retry() re-runs the handshake.
   useEffect(() => {
     let cancelled = false
+    // Tear down any previous subscription before re-running.
+    unsubRef.current?.()
+    unsubRef.current = null
     const acquire = connect ?? ((): Promise<MythworkClient> => defaultConnect(connectOptions))
     acquire()
       .then(client => {
@@ -105,7 +112,7 @@ export function MythworkProvider({
       cancelled = true
       unsubRef.current?.()
     }
-  }, [])
+  }, [attempt])
 
   // Stable actions so downstream hooks (useUser) don't churn identity on every
   // render — they only change when the client does.
@@ -116,9 +123,16 @@ export function MythworkProvider({
     if (sdk) setUser(await sdk.auth.signOut())
   }, [sdk])
 
+  const retry = useCallback(() => {
+    setSdk(null)
+    setUser(null)
+    setUnavailable(false)
+    setAttempt(n => n + 1)
+  }, [])
+
   const value = useMemo<MythworkContextValue>(
-    () => ({ sdk, user, authStatus: authStatusOf(user, unavailable), signIn, signOut }),
-    [sdk, user, unavailable, signIn, signOut],
+    () => ({ sdk, user, authStatus: authStatusOf(user, unavailable), signIn, signOut, retry }),
+    [sdk, user, unavailable, signIn, signOut, retry],
   )
 
   return <MythworkCtx.Provider value={value}>{children}</MythworkCtx.Provider>

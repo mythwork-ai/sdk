@@ -1070,6 +1070,26 @@ export interface MethodMap {
    */
   'nav.topLevel': { params: { target: 'explore' }; result: Ok }
 
+  /**
+   * The in-app-routing <-> real-address-bar bridge. An app embedded in the
+   * host frame's iframe owns its OWN session history — a router's
+   * `history.pushState` only ever touches the iframe's window, which the
+   * host's real, top-level address bar never learns about. `nav.reportLocation`
+   * is how the app pushes its current path out to the host so the host can
+   * mirror it with its OWN `history.pushState`/`replaceState` — never a real
+   * navigation, so the iframe is never reloaded. The reverse direction (host
+   * telling the app where to go, e.g. on a top-level back/forward) is the
+   * `nav.navigate` push, not a method (see {@link EventMap}).
+   *
+   * Call on every route change, including the first one after mount.
+   * `replace` mirrors the app's own history mode (a router `replace`
+   * navigation should also `replace` at the top level, or the two history
+   * stacks desync on back/forward). Available to any embedded app — unlike
+   * `nav.topLevel`, this never leaves the app's own origin/iframe, so it
+   * carries none of that method's escape-the-sandbox risk.
+   */
+  'nav.reportLocation': { params: { path: string; replace?: boolean }; result: Ok }
+
   // ── agent.* (hosted agent sessions — AI-SDK Layer 3) ────────────────────────
   // @experimental — bridge-local (no HTTP binding). Auth: gated-result posture
   // (signed-out → { ok:false, reason:'sign_in_required' } with ZERO network).

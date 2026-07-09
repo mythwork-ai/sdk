@@ -100,6 +100,18 @@ function detectPort(env: HandshakeEnv): MessagePort | null {
 }
 
 /**
+ * Read the app's boot path — the host's real top-level path at the moment it
+ * created the iframe — from the negotiated `window.__oc` global. Only
+ * meaningful once `connect()` has resolved: `undefined` means either no host
+ * build has supplied one yet, or there is no host at all (dev/standalone).
+ * Apps should navigate their router here on first mount instead of always
+ * booting at `/`.
+ */
+export function getInitialPath(env: HandshakeEnv = browserEnv()): string | undefined {
+  return env.getOcGlobal()?.initialPath
+}
+
+/**
  * Acquire the host MessagePort, running whichever handshake path applies.
  *
  * Resolves with the started port (path (a): a platform bootstrap installed it;
@@ -151,11 +163,11 @@ export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise
     // the port; install it ourselves and announce via 'ocready'.
     const onMessage = (e: Event) => {
       const me = e as MessageEvent
-      const d = me.data as { type?: string } | null
+      const d = me.data as { type?: string; initialPath?: string } | null
       if (d?.type !== OC_INIT) return
       const port = me.ports?.[0]
       if (!port) return
-      env.setOcGlobal({ port })
+      env.setOcGlobal({ port, initialPath: d.initialPath })
       env.dispatchEvent(new Event('ocready'))
       adopt(port)
     }
