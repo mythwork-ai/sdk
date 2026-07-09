@@ -19,6 +19,18 @@
 // The host replies with the port on the FIRST oc-ping it sees; either path's
 // ping drives that reply.
 //
+// SECURITY: `window` delivers `'message'` events from ANY sender, not just the
+// host — a sibling frame or an injected same-window script can post a
+// same-shaped `{ type: 'oc-init' }` with its own transferred port and race the
+// real host's reply. `onMessage` (path (b)) only ever adopts a port carried by
+// a message whose `MessageEvent.source` is this frame's actual `window.parent`
+// — a browser-set field a sender can never spoof, so this is the symmetric
+// check to the host's own `e.source !== iframe.contentWindow` guard on its
+// inbound `oc-ping` listener (`host-iframe/src/db/index.ts`). It intentionally
+// does not gate on `MessageEvent.origin`: the host frame's origin varies per
+// deployment (custom domains), so this SDK has no fixed value to compare
+// against; `source` identity gives the same guarantee without needing one.
+//
 // Everything reaches `window`/`MessagePort` through an injectable {@link
 // HandshakeEnv} seam so the state machine is unit-testable with a minimal
 // EventTarget shim rather than real globals.
@@ -51,6 +63,13 @@ export interface HandshakeEnv {
   setOcGlobal(value: OcGlobal): void
   /** True when this frame is embedded (has a distinct parent to ping). */
   hasParent(): boolean
+  /**
+   * True when `source` (a `MessageEvent.source`) is this frame's actual host
+   * window (`window.parent`) — the only sender an `oc-init` reply is trusted
+   * from. `source` is set by the browser on delivery and cannot be forged by
+   * the sender, unlike the message body.
+   */
+  isHostSource(source: unknown): boolean
 }
 
 /** Options accepted by {@link acquirePort} / `connect`. */
@@ -91,12 +110,22 @@ export function browserEnv(): HandshakeEnv {
       w[OC_PORT_GLOBAL] = value
     },
     hasParent: () => w.parent !== (w as unknown as Window),
+    isHostSource: source => source === w.parent,
   }
 }
 
-/** Read an already-installed port from the env's `window.__oc`, if present. */
+/**
+ * Read an already-installed port from the env's `window.__oc`, if present.
+ * Requires a genuine `MessagePort` instance — a same-window script can write
+ * to the plain `window.__oc` global before `connect()` runs, so this at least
+ * rejects an obviously-forged, non-transferable stand-in. It cannot establish
+ * full provenance (nothing about a bare global read carries sender identity);
+ * the enforceable trust boundary is the `isHostSource` check on the live
+ * `oc-init` reply below.
+ */
 function detectPort(env: HandshakeEnv): MessagePort | null {
-  return env.getOcGlobal()?.port ?? null
+  const port = env.getOcGlobal()?.port
+  return port instanceof MessagePort ? port : null
 }
 
 /**
@@ -148,9 +177,14 @@ export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise
     }
 
     // Path (b): we drive the handshake. The host replies oc-init transferring
-    // the port; install it ourselves and announce via 'ocready'.
+    // the port; install it ourselves and announce via 'ocready'. Only ever
+    // trust a reply whose `source` is the actual host window — otherwise any
+    // sibling frame or injected script that races the real host's reply could
+    // hand itself the RPC transport (see the SECURITY note at the top of this
+    // file).
     const onMessage = (e: Event) => {
       const me = e as MessageEvent
+      if (!env.isHostSource(me.source)) return
       const d = me.data as { type?: string } | null
       if (d?.type !== OC_INIT) return
       const port = me.ports?.[0]
