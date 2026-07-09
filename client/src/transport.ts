@@ -93,6 +93,14 @@ export function requestOverPort<R = unknown>(
     port.addEventListener('message', handler)
     timer = setTimeout(() => {
       cleanup()
+      // Tell the host to give up too — a bare client-side timeout previously
+      // left whatever the host was doing (e.g. an OAuth popup + its pending
+      // message listener in kernel.signIn's flow, see host-iframe/src/auth.ts)
+      // running indefinitely after the client had already discarded the
+      // request. Mirrors the explicit-abort path above so "give up" always
+      // means the same thing on both ends of the port, whether the caller
+      // cancelled or the clock just ran out.
+      port.postMessage({ id, type: 'cancel' })
       reject(new Error(`@mythwork/sdk: request "${method}" timed out after ${timeoutMs}ms`))
     }, timeoutMs)
     port.postMessage({ id, method, args })
@@ -136,6 +144,9 @@ export function streamOverPort<R = unknown>(
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
         cleanup()
+        // See requestOverPort's matching timeout branch: tell the host to
+        // abandon the in-flight stream too, not just the client-side promise.
+        port.postMessage({ id, type: 'cancel' })
         reject(new Error(`@mythwork/sdk: stream "${method}" timed out after ${timeoutMs}ms`))
       }, timeoutMs)
     }

@@ -7,16 +7,17 @@
 // `request()` with the wire method string. No validation, no transformation —
 // the protocol types are the contract, the wire is unchanged.
 
-import type {
-  AiOpts,
-  ChatCompletion,
-  ChatMessage,
-  Event as ProtocolEvent,
-  EventMap,
-  EventPayload,
-  MethodMap,
-  MethodParams,
-  MethodResult,
+import {
+  DEFAULT_INTERACTIVE_TIMEOUT_MS,
+  type AiOpts,
+  type ChatCompletion,
+  type ChatMessage,
+  type Event as ProtocolEvent,
+  type EventMap,
+  type EventPayload,
+  type MethodMap,
+  type MethodParams,
+  type MethodResult,
 } from '@mythwork/protocol'
 import {
   type PushHandler,
@@ -282,12 +283,27 @@ export class MythworkClient {
     /** Resolve the current user (anonymous sentinel when signed out). Wire: `kernel.getUser`. */
     getUser: (params: MethodParams<'kernel.getUser'> = {}, opts?: RequestOptions) =>
       this.request('kernel.getUser', params, opts),
-    /** Sign in (opens the OAuth popup if needed). Wire: `kernel.signIn`. */
+    /**
+     * Sign in (opens the OAuth popup if needed). Wire: `kernel.signIn`.
+     *
+     * Defaults to {@link DEFAULT_INTERACTIVE_TIMEOUT_MS}, not the generic
+     * {@link import('@mythwork/protocol').DEFAULT_REQUEST_TIMEOUT_MS} every
+     * other call uses — this one blocks on a human completing an OAuth popup
+     * (host-iframe's `signInWithPopup` gives it up to 90s), and the 30s
+     * generic default was firing before that flow had a realistic chance to
+     * finish. Callers can still override via `opts.timeoutMs`.
+     */
     signIn: (params: MethodParams<'kernel.signIn'> = {}, opts?: RequestOptions) =>
-      this.request('kernel.signIn', params, opts),
+      this.request('kernel.signIn', params, {
+        timeoutMs: DEFAULT_INTERACTIVE_TIMEOUT_MS,
+        ...opts,
+      }),
     /** Sign out the platform session. Wire: `kernel.signOut`. */
     signOut: (params: MethodParams<'kernel.signOut'> = {}, opts?: RequestOptions) =>
-      this.request('kernel.signOut', params, opts),
+      this.request('kernel.signOut', params, {
+        timeoutMs: DEFAULT_INTERACTIVE_TIMEOUT_MS,
+        ...opts,
+      }),
     /** Subscribe to authenticated-user changes. Wire event: `kernel.authChanged`. */
     onAuthChanged: (handler: EventHandler<'kernel.authChanged'>) =>
       this.subscribe('kernel.authChanged', handler),
