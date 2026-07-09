@@ -3,6 +3,9 @@
 // Base layer (every app): <MythworkProvider> + useMythwork() → { sdk, user,
 // authStatus, signIn, signOut }. Project layer (editor apps): <MythworkProjectProvider>
 // + useProject(), plus the project-scoped hooks (useCollabRoom, …).
+// <MythworkProvider> also keeps the host frame's address bar in sync with
+// whatever router the app renders (see platform.tsx's RouterSync) — not a
+// hook apps call themselves, so it isn't exported here.
 //
 // React, react-router-dom, yjs, y-protocols and y-websocket are PEER
 // dependencies of this subpath — the core `@mythwork/sdk` entry stays
@@ -37,4 +40,3 @@ export { type FileChangeEvent, type FilesHandle, useFiles } from './use-files'
 export { type GitHandle, useGit } from './use-git'
 export { type UseUserResult, useUser } from './use-user'
 export { useCompletion } from './use-completion'
-export { useHostLocationSync } from './use-host-location-sync'

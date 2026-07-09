@@ -17,9 +17,24 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useInRouterContext } from 'react-router-dom'
 import type { User } from '@mythwork/protocol'
 import type { MythworkClient } from '../client'
 import { type ConnectOptions, connect as defaultConnect } from '../index'
+import { useHostLocationSync } from './use-host-location-sync'
+
+// Keeps the host frame's real address bar (and reload/back-forward) in sync
+// with whatever router the app renders — every Mythwork app runs embedded in
+// the platform host frame, so this belongs here rather than as a hook each
+// app must remember to call itself. useInRouterContext() gates it behind an
+// actual Router being present: this always calls useHostLocationSync in the
+// SAME component on every render where that component mounts, satisfying the
+// Rules of Hooks — it's the component's presence that's conditional here, not
+// a hook call within one.
+function RouterSync({ sdk }: { sdk: MythworkClient | null }): null {
+  useHostLocationSync(sdk)
+  return null
+}
 
 /** Coarse auth state for conditional rendering. `loading` until the first
  * `getUser()` resolves; `unavailable` if the client never connected. */
@@ -83,6 +98,7 @@ export function MythworkProvider({
   const [unavailable, setUnavailable] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const unsubRef = useRef<(() => void) | null>(null)
+  const inRouter = useInRouterContext()
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: connect/connectOptions are intentionally excluded so a new prop identity never forces a reconnect; attempt is included so retry() re-runs the handshake.
   useEffect(() => {
@@ -135,7 +151,12 @@ export function MythworkProvider({
     [sdk, user, unavailable, signIn, signOut, retry],
   )
 
-  return <MythworkCtx.Provider value={value}>{children}</MythworkCtx.Provider>
+  return (
+    <MythworkCtx.Provider value={value}>
+      {inRouter && <RouterSync sdk={sdk} />}
+      {children}
+    </MythworkCtx.Provider>
+  )
 }
 
 /** Access the client + auth state from any component inside a {@link MythworkProvider}. */
