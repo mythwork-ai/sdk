@@ -1,6 +1,6 @@
 {
   "name": "@mythwork/sdk",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "type": "module",
   "license": "MIT",
   "description": "The Mythwork inner-app client: port handshake, typed request() against the method map, subscribe() against the event map, and thin namespaced helpers (sdk.fs.read, sdk.auth.getUser, ...). Dependency-free except @mythwork/protocol.",
@@ -30,12 +30,16 @@
   },
   "peerDependencies": {
     "react": ">=18",
+    "react-router-dom": ">=6",
     "y-protocols": "^1.0.0",
     "y-websocket": ">=2",
     "yjs": "^13.6.0"
   },
   "peerDependenciesMeta": {
     "react": {
+      "optional": true
+    },
+    "react-router-dom": {
       "optional": true
     },
     "y-protocols": {
@@ -56,6 +60,7 @@
     "happy-dom": "^15.11.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-router-dom": "^7.17.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.7",
     "y-protocols": "^1.0.6",

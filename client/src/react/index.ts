@@ -4,8 +4,9 @@
 // authStatus, signIn, signOut }. Project layer (editor apps): <MythworkProjectProvider>
 // + useProject(), plus the project-scoped hooks (useCollabRoom, …).
 //
-// React, yjs, y-protocols and y-websocket are PEER dependencies of this subpath
-// — the core `@mythwork/sdk` entry stays dependency-free.
+// React, react-router-dom, yjs, y-protocols and y-websocket are PEER
+// dependencies of this subpath — the core `@mythwork/sdk` entry stays
+// dependency-free.
 
 export {
   type AuthStatus,
@@ -36,3 +37,4 @@ export { type FileChangeEvent, type FilesHandle, useFiles } from './use-files'
 export { type GitHandle, useGit } from './use-git'
 export { type UseUserResult, useUser } from './use-user'
 export { useCompletion } from './use-completion'
+export { useHostLocationSync } from './use-host-location-sync'
