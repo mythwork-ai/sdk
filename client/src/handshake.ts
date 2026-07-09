@@ -2,19 +2,19 @@
 //
 // Two paths, both faithful to deployed production behavior:
 //
-//   (a) A platform bootstrap already ran. The serve-worker injected the
-//       orbit-shim, which ran the oc-ping loop, installed the transferred port
-//       at `window.__oc.port`, and dispatched a `'ocready'` window Event. When
-//       that has happened (or is in flight), the client only needs to DISCOVER
-//       the port — poll `window.__oc.port` and listen for `'ocready'`.
+//   (a) THIS MODULE already verified a port earlier in the page's lifetime
+//       (a prior `acquirePort()` call ran the real handshake below and
+//       confirmed it came from the host). When that has happened (or is in
+//       flight), a later call only needs to DISCOVER the already-verified
+//       port — poll `window.__oc.port` and listen for `'ocready'`.
 //
-//   (b) No platform bootstrap installed a port. Then the client must run the
+//   (b) No port has been verified yet. Then the client must run the
 //       handshake ITSELF: post `{ type: 'oc-ping' }` to `window.parent` every
 //       PING_INTERVAL_MS within PING_BUDGET_MS, listen for the host's
 //       `{ type: 'oc-init', shareBaseOrigin }` reply carrying the transferred
 //       MessagePort, install it at `window.__oc.port`, and dispatch the same
-//       `'ocready'` event the platform fires — so any co-resident shim-transport
-//       converges on the same port.
+//       `'ocready'` event so any co-resident shim-transport converges on the
+//       same port.
 //
 // The host replies with the port on the FIRST oc-ping it sees; either path's
 // ping drives that reply.
@@ -22,14 +22,30 @@
 // SECURITY: `window` delivers `'message'` events from ANY sender, not just the
 // host — a sibling frame or an injected same-window script can post a
 // same-shaped `{ type: 'oc-init' }` with its own transferred port and race the
-// real host's reply. `onMessage` (path (b)) only ever adopts a port carried by
-// a message whose `MessageEvent.source` is this frame's actual `window.parent`
-// — a browser-set field a sender can never spoof, so this is the symmetric
-// check to the host's own `e.source !== iframe.contentWindow` guard on its
-// inbound `oc-ping` listener (`host-iframe/src/db/index.ts`). It intentionally
-// does not gate on `MessageEvent.origin`: the host frame's origin varies per
+// real host's reply. `onMessage` only ever adopts a port carried by a message
+// whose `MessageEvent.source` is this frame's actual `window.parent` — a
+// browser-set field a sender can never spoof, so this is the symmetric check
+// to the host's own `e.source !== iframe.contentWindow` guard on its inbound
+// `oc-ping` listener (`host-iframe/src/db/index.ts`). It intentionally does
+// not gate on `MessageEvent.origin`: the host frame's origin varies per
 // deployment (custom domains), so this SDK has no fixed value to compare
 // against; `source` identity gives the same guarantee without needing one.
+//
+// `window.__oc` is a plain, writable global, so its mere presence proves
+// nothing: any same-window script (a compromised dependency, an ad/analytics
+// snippet, an extension content script, XSS) can write a real MessagePort to
+// `window.__oc.port` before `acquirePort()` ever runs. Path (a) must not treat
+// "a MessagePort sits at window.__oc.port" as proof of host provenance — that
+// would hand the attacker's port to every subsequent `fs.*`/`db.*`/`secrets.*`/
+// `ai.*`/`kernel.*` call. Instead, provenance is tracked in `verifiedPorts`
+// (module-private, in-memory, never exposed on `window`): a port is added to
+// it ONLY inside `onMessage`, after the `isHostSource` check above passes.
+// `detectPort()` — used by every "path (a)" read of the global, including the
+// fast path, the `'ocready'` listener, the ping loop, and the final
+// last-look — requires WeakSet membership, not just `instanceof MessagePort`.
+// A pre-installed port that never went through the source-checked message
+// flow is therefore never adopted via path (a); it just falls through to
+// path (b), which re-verifies from scratch and ignores the forged value.
 //
 // Everything reaches `window`/`MessagePort` through an injectable {@link
 // HandshakeEnv} seam so the state machine is unit-testable with a minimal
@@ -115,31 +131,51 @@ export function browserEnv(): HandshakeEnv {
 }
 
 /**
- * Read an already-installed port from the env's `window.__oc`, if present.
- * Requires a genuine `MessagePort` instance — a same-window script can write
- * to the plain `window.__oc` global before `connect()` runs, so this at least
- * rejects an obviously-forged, non-transferable stand-in. It cannot establish
- * full provenance (nothing about a bare global read carries sender identity);
- * the enforceable trust boundary is the `isHostSource` check on the live
- * `oc-init` reply below.
+ * Ports this module has itself verified came from the host — added only
+ * inside `onMessage`, after `isHostSource` confirms the transferring message's
+ * `MessageEvent.source` is the real `window.parent`. This is the actual trust
+ * boundary for path (a): a `window.__oc.port` value is module-private state
+ * that any same-window script can overwrite, so its mere presence (or even
+ * being a genuine `MessagePort` instance) proves nothing about who put it
+ * there. Membership in this set is the only thing that does.
+ */
+const verifiedPorts = new WeakSet<MessagePort>()
+
+/**
+ * Read an already-installed port from the env's `window.__oc`, if present —
+ * but only if THIS module previously verified it via the source-checked
+ * `oc-init` message flow (see `verifiedPorts` above). A same-window script can
+ * write any value, including a genuine `MessagePort`, to the plain
+ * `window.__oc` global before `acquirePort()` runs; requiring `instanceof
+ * MessagePort` alone would reject only an obviously-forged stand-in and still
+ * adopt a real-but-unverified attacker-supplied port. Requiring
+ * `verifiedPorts` membership closes that gap: an unverified value — forged or
+ * not — is never adopted here, so `acquirePort()` falls through to running
+ * the real, source-checked handshake itself (path (b)) instead.
  */
 function detectPort(env: HandshakeEnv): MessagePort | null {
   const port = env.getOcGlobal()?.port
-  return port instanceof MessagePort ? port : null
+  return port instanceof MessagePort && verifiedPorts.has(port) ? port : null
 }
 
 /**
  * Acquire the host MessagePort, running whichever handshake path applies.
  *
- * Resolves with the started port (path (a): a platform bootstrap installed it;
- * path (b): we ran the oc-ping loop and the host transferred it). Rejects with
- * {@link NO_PORT_ERROR} if no port appears within `timeoutMs`. The returned port
- * is always `start()`-ed and installed at `window.__oc.port`.
+ * Resolves with the started port (path (a): this module already verified it
+ * via an earlier call in this page; path (b): we ran the oc-ping loop and the
+ * host transferred it, with `MessageEvent.source` confirming the sender was
+ * actually `window.parent`). Rejects with {@link NO_PORT_ERROR} if no port
+ * appears within `timeoutMs`. The returned port is always `start()`-ed and
+ * installed at `window.__oc.port`.
  */
 export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise<MessagePort> {
   const budgetMs = opts?.timeoutMs ?? PING_BUDGET_MS
 
-  // Fast path: a port is already installed (platform bootstrap finished first).
+  // Fast path: a port this module already verified is sitting at
+  // window.__oc.port (e.g. an earlier acquirePort() call in this same page
+  // already ran the handshake). detectPort() only returns a WeakSet-verified
+  // port, so a same-window script that pre-populated the global with its own
+  // MessagePort before this call ran is never adopted here.
   const existing = detectPort(env)
   if (existing) {
     existing.start()
@@ -169,8 +205,12 @@ export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise
       resolve(port)
     }
 
-    // Path (a): the platform bootstrap dispatches 'ocready' once it installs
-    // window.__oc.port. Same discovery path as orbit-shim-transport.
+    // Path (a): a port this module already verified (see `verifiedPorts`)
+    // dispatches 'ocready' once it's installed — either by this same
+    // handshake's own `onMessage` below (a concurrent `acquirePort()` call in
+    // this page converging on the port the first call just verified) or by
+    // an earlier call that already ran. Same discovery path as
+    // orbit-shim-transport.
     const onReady = () => {
       const port = detectPort(env)
       if (port) adopt(port)
@@ -181,7 +221,11 @@ export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise
     // trust a reply whose `source` is the actual host window — otherwise any
     // sibling frame or injected script that races the real host's reply could
     // hand itself the RPC transport (see the SECURITY note at the top of this
-    // file).
+    // file). This is also the ONLY place a port is ever added to
+    // `verifiedPorts` — the sole source of provenance path (a) relies on, so
+    // a port pre-installed at `window.__oc.port` by anything other than this
+    // exact check is never trusted, no matter how genuine the MessagePort
+    // instance looks.
     const onMessage = (e: Event) => {
       const me = e as MessageEvent
       if (!env.isHostSource(me.source)) return
@@ -189,6 +233,7 @@ export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise
       if (d?.type !== OC_INIT) return
       const port = me.ports?.[0]
       if (!port) return
+      verifiedPorts.add(port)
       env.setOcGlobal({ port })
       env.dispatchEvent(new Event('ocready'))
       adopt(port)
@@ -201,7 +246,9 @@ export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise
     if (env.hasParent()) {
       const ping = () => {
         if (settled) return
-        // If a bootstrap installed the port out from under us, adopt it.
+        // If a concurrent, already-verified handshake installed the port out
+        // from under us, adopt it (detectPort() only ever returns a
+        // WeakSet-verified port, never a merely-present global value).
         const port = detectPort(env)
         if (port) {
           adopt(port)

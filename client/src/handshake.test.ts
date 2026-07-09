@@ -76,28 +76,87 @@ class FakeEnv implements HandshakeEnv {
 describe('acquirePort', () => {
   afterEach(() => vi.useRealTimers())
 
-  it('path (a): adopts a port a platform bootstrap already installed', async () => {
+  it('path (a): reuses a port this module already verified via a prior handshake, without re-pinging', async () => {
     const env = new FakeEnv()
     const chan = new MessageChannel()
-    env.setOcGlobal({ port: chan.port1 })
-    const port = await acquirePort(env)
-    expect(port).toBe(chan.port1)
-    expect(env.pings).toHaveLength(0) // never needed to ping
+    env.setHostPort(chan.port2)
+    // First call runs the real, source-checked handshake and verifies the port.
+    const first = await acquirePort(env)
+    expect(first).toBe(chan.port2)
+    expect(env.pings).toEqual([{ type: 'oc-ping' }])
+    // A second call (e.g. a co-resident consumer sharing the same page) takes
+    // the fast path: the port is already installed AND already verified by
+    // our own handshake, so no second ping round-trip is needed.
+    const second = await acquirePort(env)
+    expect(second).toBe(chan.port2)
+    expect(env.pings).toEqual([{ type: 'oc-ping' }]) // no additional ping
     chan.port1.close()
     chan.port2.close()
   })
 
-  it('path (a): discovers a port installed later via the ocready event', async () => {
+  it('path (a): a concurrent call converges on the port another call just verified, via ocready', async () => {
     const env = new FakeEnv()
     const chan = new MessageChannel()
-    env.setEmbedded(false) // not embedded, so no self-ping loop
-    const pending = acquirePort(env)
-    // Simulate the bootstrap installing the port then firing ocready.
-    env.setOcGlobal({ port: chan.port1 })
-    env.dispatchEvent(new Event('ocready'))
-    expect(await pending).toBe(chan.port1)
+    env.setEmbedded(false) // neither call self-pings; both just wait
+    const first = acquirePort(env)
+    const second = acquirePort(env)
+    // Simulate the real host replying to the (embedded) handshake elsewhere —
+    // here we drive it directly through the source-checked message path so
+    // the port is genuinely verified before either call can adopt it.
+    env.dispatchMessage({ type: 'oc-init', shareBaseOrigin: 'https://lab.example' }, [chan.port2], env.hostWindow)
+    expect(await first).toBe(chan.port2)
+    expect(await second).toBe(chan.port2)
     chan.port1.close()
     chan.port2.close()
+  })
+
+  it('path (a): a port merely PRESENT at window.__oc.port — never verified by this module — is not adopted', async () => {
+    const env = new FakeEnv()
+    const forged = new MessageChannel()
+    const chan = new MessageChannel()
+    // Simulate a same-window script (compromised dependency, injected script,
+    // extension content script, XSS) pre-populating the global with a real,
+    // genuine MessagePort before acquirePort() ever runs — no host involved.
+    env.setOcGlobal({ port: forged.port1 })
+    // The real host is ready to reply over the legitimate ping/oc-init path.
+    env.setHostPort(chan.port2)
+
+    const port = await acquirePort(env)
+    // The unverified pre-installed port is never adopted; the module falls
+    // through to running its own source-checked handshake and gets the real
+    // host's port instead.
+    expect(port).toBe(chan.port2)
+    expect(port).not.toBe(forged.port1)
+    expect(env.pings).toEqual([{ type: 'oc-ping' }]) // the fast path never short-circuited
+
+    forged.port1.close()
+    forged.port2.close()
+    chan.port1.close()
+    chan.port2.close()
+  })
+
+  it('adversarial: a pre-installed real MessagePort is never adopted even if isHostSource always returns false (no legitimate host present at all)', async () => {
+    vi.useFakeTimers()
+    const env = new FakeEnv()
+    // Hardcode isHostSource to always reject — models a page where no
+    // legitimate host reply can ever arrive (or, equivalently, an attacker
+    // who has already defeated the source check by some other means). The
+    // ONLY way to "win" here is via the fast path blindly trusting a
+    // pre-existing window.__oc.port.
+    Object.defineProperty(env, 'isHostSource', { value: () => false })
+    const attackerChan = new MessageChannel()
+    // Attacker pre-installs a genuine MessagePort before acquirePort() runs —
+    // exactly the `window.__oc = { port: new MessageChannel().port1 }`
+    // scenario a same-window attacker script can always perform.
+    env.setOcGlobal({ port: attackerChan.port1 })
+
+    const p = acquirePort(env, { timeoutMs: 5000 })
+    const assertion = expect(p).rejects.toThrow(NO_PORT_ERROR)
+    await vi.advanceTimersByTimeAsync(5000)
+    await assertion
+
+    attackerChan.port1.close()
+    attackerChan.port2.close()
   })
 
   it('path (b): runs the oc-ping loop and adopts the host-transferred port', async () => {
