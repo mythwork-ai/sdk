@@ -42,6 +42,7 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
       'explore.comments',
       'explore.listApps',
       'explore.myApps',
+      'explore.sharedWithMe',
       'notifications.list',
       'notifications.listUnread',
     ])

@@ -94,6 +94,28 @@ describe('requestOverPort', () => {
     await vi.advanceTimersByTimeAsync(30_000)
     await assertion
   })
+
+  // Regression: a bare client-side timeout used to leave the host with no
+  // idea the caller had given up — e.g. kernel.signIn's host-side OAuth popup
+  // (host-iframe/src/auth.ts) kept running, listener and all, well past the
+  // point the client had already rejected. The timeout path now posts the
+  // same `{ id, type: 'cancel' }` the explicit-abort path always has, so the
+  // host can act on it (see host-iframe/src/bridges/kernel.ts +
+  // cancel-registry.ts) exactly as if the caller had cancelled explicitly.
+  it('posts a cancel to the host when the timeout fires, same as an explicit abort', async () => {
+    vi.useFakeTimers()
+    const received: { id: string; type?: string }[] = []
+    chan.port2.addEventListener('message', e => {
+      received.push(e.data as { id: string; type?: string })
+    })
+    const p = requestOverPort(chan.port1, 'kernel.signIn', {}, { timeoutMs: 1000 })
+    const assertion = expect(p).rejects.toThrow(/timed out after 1000ms/)
+    await vi.advanceTimersByTimeAsync(1000)
+    await assertion
+
+    const id = received[0]!.id
+    expect(received).toContainEqual({ id, type: 'cancel' })
+  })
 })
 
 describe('streamOverPort', () => {

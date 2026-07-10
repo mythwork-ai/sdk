@@ -28,6 +28,7 @@ import type {
   ProjectConfig,
   ProjectInfo,
   RoomDescriptor,
+  SharedAppSummary,
   SpotlightItem,
   TagCount,
   User,
@@ -669,6 +670,54 @@ export interface MethodMap {
   'explore.myApps': {
     params: { cursor?: string }
     result: { items: MyAppSummary[]; nextCursor?: string } | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Apps where the signed-in viewer is an editor/viewer collaborator, NOT the
+   * owner — owner-role apps live exclusively in `explore.myApps`, no overlap
+   * between the two surfaces. Otherwise identical to `explore.myApps` (same
+   * status derivation, same auth model, same pagination convention).
+   * Signed-in: with no session the bridge returns
+   * `{ ok: false, reason: 'sign_in_required' }` without a network call, same
+   * as `explore.myApps`. Backing: `apps` D1 joined to `project_members`,
+   * scoped to the authenticated viewer's editor/viewer role rows.
+   */
+  'explore.sharedWithMe': {
+    params: { cursor?: string }
+    result: { items: SharedAppSummary[]; nextCursor?: string } | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Mint a short-lived signed token proving the caller is the project's
+   * owner/editor/viewer, so the serve worker can render the project's current
+   * draft without a DB call. Member-gated (owner/editor/viewer): signed-out
+   * resolves `{ ok: false, reason: 'sign_in_required' }` with ZERO network; a
+   * non-member or unknown projectId → `{ ok: false, reason: 'forbidden' }`.
+   * Backing: `project_members` role lookup + signed JWT (api worker).
+   */
+  'explore.mintPreviewToken': {
+    params: { projectId: string }
+    result: { ok: true; token: string; expiresAt: number } | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Owner-only toggle for durable, revocable "anyone with the link can view"
+   * access to an unpublished app. `enabled: true` with no existing token
+   * generates one; `regenerate: true` issues a new token, invalidating any
+   * previously distributed link immediately; `enabled: false` alone is a full
+   * revoke. Owner-gated EXACTLY (not editor/viewer): signed-out resolves
+   * `{ ok: false, reason: 'sign_in_required' }` with ZERO network; a
+   * non-owner or unknown projectId → `{ ok: false, reason: 'forbidden' }`.
+   * Backing: `projects.link_sharing_enabled` / `projects.share_token`.
+   */
+  'explore.shareSettings': {
+    params: { projectId: string; enabled: boolean; regenerate?: boolean }
+    result:
+      | { ok: true; enabled: boolean; shareToken: string | null }
+      | { ok: false; reason: string }
   }
   /**
    * @experimental — API may still evolve before 1.0.

@@ -7,16 +7,17 @@
 // `request()` with the wire method string. No validation, no transformation —
 // the protocol types are the contract, the wire is unchanged.
 
-import type {
-  AiOpts,
-  ChatCompletion,
-  ChatMessage,
-  Event as ProtocolEvent,
-  EventMap,
-  EventPayload,
-  MethodMap,
-  MethodParams,
-  MethodResult,
+import {
+  DEFAULT_INTERACTIVE_TIMEOUT_MS,
+  type AiOpts,
+  type ChatCompletion,
+  type ChatMessage,
+  type Event as ProtocolEvent,
+  type EventMap,
+  type EventPayload,
+  type MethodMap,
+  type MethodParams,
+  type MethodResult,
 } from '@mythwork/protocol'
 import {
   type PushHandler,
@@ -282,10 +283,38 @@ export class MythworkClient {
     /** Resolve the current user (anonymous sentinel when signed out). Wire: `kernel.getUser`. */
     getUser: (params: MethodParams<'kernel.getUser'> = {}, opts?: RequestOptions) =>
       this.request('kernel.getUser', params, opts),
-    /** Sign in (opens the OAuth popup if needed). Wire: `kernel.signIn`. */
+    /**
+     * Sign in (opens the OAuth popup if needed). Wire: `kernel.signIn`.
+     *
+     * Defaults to {@link DEFAULT_INTERACTIVE_TIMEOUT_MS}, not the generic
+     * {@link import('@mythwork/protocol').DEFAULT_REQUEST_TIMEOUT_MS} every
+     * other call uses — this one blocks on a human completing an OAuth popup
+     * (host-iframe's `signInWithPopup` gives it up to 90s), and the 30s
+     * generic default was firing before that flow had a realistic chance to
+     * finish. Callers can still override via `opts.timeoutMs`.
+     *
+     * Spread order matters here: `{ ...opts, timeoutMs: opts?.timeoutMs ?? DEFAULT }`
+     * (not `{ timeoutMs: DEFAULT, ...opts }`) so that a caller who spreads a
+     * shared options object with `timeoutMs: undefined` present-but-unset still
+     * gets the 120s interactive default instead of silently falling through to
+     * `requestOverPort`'s own `opts?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS`
+     * (30s) — the exact bug this default was added to fix.
+     */
     signIn: (params: MethodParams<'kernel.signIn'> = {}, opts?: RequestOptions) =>
-      this.request('kernel.signIn', params, opts),
-    /** Sign out the platform session. Wire: `kernel.signOut`. */
+      this.request('kernel.signIn', params, {
+        ...opts,
+        timeoutMs: opts?.timeoutMs ?? DEFAULT_INTERACTIVE_TIMEOUT_MS,
+      }),
+    /**
+     * Sign out the platform session. Wire: `kernel.signOut`.
+     *
+     * Uses the generic {@link import('@mythwork/protocol').DEFAULT_REQUEST_TIMEOUT_MS},
+     * NOT {@link DEFAULT_INTERACTIVE_TIMEOUT_MS} — unlike `signIn`, `signOutFlow`
+     * (host-iframe's `bridges/kernel.ts`) is synchronous and never waits on a
+     * human-paced popup, so there's no race to budget extra time for. Giving it
+     * the 120s interactive budget would only make a genuinely-stuck signOut (from
+     * some unrelated bug) take 4x longer to surface an error, for no benefit.
+     */
     signOut: (params: MethodParams<'kernel.signOut'> = {}, opts?: RequestOptions) =>
       this.request('kernel.signOut', params, opts),
     /** Subscribe to authenticated-user changes. Wire event: `kernel.authChanged`. */
@@ -647,6 +676,12 @@ export class MythworkClient {
      */
     deleteApp: (params: MethodParams<'explore.deleteApp'>, opts?: RequestOptions) =>
       this.request('explore.deleteApp', params, opts),
+    sharedWithMe: (params: MethodParams<'explore.sharedWithMe'>, opts?: RequestOptions) =>
+      this.request('explore.sharedWithMe', params, opts),
+    mintPreviewToken: (params: MethodParams<'explore.mintPreviewToken'>, opts?: RequestOptions) =>
+      this.request('explore.mintPreviewToken', params, opts),
+    shareSettings: (params: MethodParams<'explore.shareSettings'>, opts?: RequestOptions) =>
+      this.request('explore.shareSettings', params, opts),
   }
 
   // ── ai.* (mythwork-ai proxy) ──────────────────────────────────────────────

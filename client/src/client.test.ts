@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { DEFAULT_INTERACTIVE_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS } from '@mythwork/protocol'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MythworkClient } from './client'
 
 // Wire-mapping tests: a namespaced helper must emit the deployed (sometimes
@@ -188,6 +189,87 @@ describe('namespaced helper → wire method mapping', () => {
       expect(outbound[0]!.args).toEqual(wireArgs)
     })
   }
+})
+
+// Regression coverage for the primary browser-fleet-reported bug (root cause
+// #1): `auth.signIn`/`auth.signOut` must actually apply
+// `DEFAULT_INTERACTIVE_TIMEOUT_MS` (120s), not silently fall back to
+// `requestOverPort`'s generic `DEFAULT_REQUEST_TIMEOUT_MS` (30s) — the mismatch
+// that let the client give up on `kernel.signIn` before a human-paced OAuth
+// popup (host-iframe's `signInWithPopup`, up to 90s) had a realistic chance to
+// finish. Every existing test above replies before either timer fires, so none
+// of them would notice a regression that dropped the override in `client.ts`
+// (verified: reverting that line still left the full suite green).
+describe('auth.signIn / auth.signOut interactive-timeout budget', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+
+  beforeEach(() => {
+    chan = new MessageChannel()
+    chan.port2.start()
+    // The host never replies — these tests only care about when (if) the
+    // client gives up on its own.
+    client = new MythworkClient(chan.port1)
+  })
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+    vi.useRealTimers()
+  })
+
+  it('auth.signIn does not time out at the generic 30s default', async () => {
+    vi.useFakeTimers()
+    const p = client.auth.signIn()
+    const settled = vi.fn()
+    p.catch(settled)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
+    // Still pending 30s in — the 30s generic default must not have fired.
+    expect(settled).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERACTIVE_TIMEOUT_MS - DEFAULT_REQUEST_TIMEOUT_MS)
+    await expect(p).rejects.toThrow(/timed out after 120000ms/)
+  })
+
+  it('auth.signOut uses the generic 30s default, not the 120s interactive budget', async () => {
+    vi.useFakeTimers()
+    const p = client.auth.signOut()
+    const assertion = expect(p).rejects.toThrow(/timed out after 30000ms/)
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
+    await assertion
+  })
+
+  it('auth.signIn honors an explicit opts.timeoutMs override over the interactive default', async () => {
+    vi.useFakeTimers()
+    const p = client.auth.signIn({}, { timeoutMs: 5000 })
+    const assertion = expect(p).rejects.toThrow(/timed out after 5000ms/)
+    await vi.advanceTimersByTimeAsync(5000)
+    await assertion
+  })
+
+  // Regression for the override-pattern bug caught in review: `{ ...opts,
+  // timeoutMs: opts?.timeoutMs ?? DEFAULT }` must fall back to the 120s
+  // interactive default even when the caller's `opts` object has `timeoutMs`
+  // present-but-`undefined` (e.g. a wrapper spreading a shared options bag
+  // with an optional field left unset) — not just when the key is absent
+  // entirely. The buggy `{ timeoutMs: DEFAULT, ...opts }` order (object-spread
+  // `undefined` winning over the literal default) passes every other test in
+  // this file but fails this one: it falls through to `requestOverPort`'s own
+  // `opts?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS` and times out at 30s.
+  it('auth.signIn still applies the 120s interactive default when opts.timeoutMs is explicitly undefined', async () => {
+    vi.useFakeTimers()
+    const p = client.auth.signIn({}, { timeoutMs: undefined })
+    const settled = vi.fn()
+    p.catch(settled)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
+    // Must still be pending at 30s — the generic default must not have fired
+    // just because `timeoutMs` was present-but-unset on the passed opts.
+    expect(settled).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERACTIVE_TIMEOUT_MS - DEFAULT_REQUEST_TIMEOUT_MS)
+    await expect(p).rejects.toThrow(/timed out after 120000ms/)
+  })
 })
 
 describe('draft explore result passthrough', () => {

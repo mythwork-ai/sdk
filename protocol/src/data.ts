@@ -194,16 +194,37 @@ export type AppDetail = AppSummary & {
 /**
  * @experimental — API may still evolve before 1.0.
  *
+ * The tri-state listing status for an app in the signed-in viewer's own
+ * My Apps / Shared with me views: `'draft'` (never published), `'live'`
+ * (currently public), or `'unpublished'` (taken down, still fully intact).
+ */
+export type AppStatus = 'draft' | 'live' | 'unpublished'
+
+/**
+ * @experimental — API may still evolve before 1.0.
+ *
  * One app as it appears in the signed-in viewer's own My Apps view
  * (`explore.myApps`) — an {@link AppSummary} plus the two owner-only status
  * flags the public discovery surface never exposes (it filters these apps
  * out entirely instead).
  */
 export type MyAppSummary = AppSummary & {
-  /** True when the app is tombstoned (unpublish/delete) — hidden from Discover, still fully intact. */
-  unpublished: boolean
+  /** 'draft' (never published), 'live' (currently public), or 'unpublished' (taken down). */
+  status: AppStatus
   /** True when the app is hidden from Discover by the read-time moderation scan gate. */
   restricted: boolean
+}
+
+/**
+ * @experimental — API may still evolve before 1.0.
+ *
+ * One app as it appears in the signed-in viewer's Shared with me view
+ * (`explore.sharedWithMe`) — a {@link MyAppSummary} plus the collaborator's
+ * role on the project.
+ */
+export type SharedAppSummary = MyAppSummary & {
+  /** The collaborator's role on this project — always 'editor' or 'viewer' (never 'owner'; owner-role apps live in MyAppSummary/my-apps only). */
+  role: 'editor' | 'viewer'
 }
 
 /**

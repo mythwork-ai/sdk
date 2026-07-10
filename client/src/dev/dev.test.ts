@@ -400,6 +400,46 @@ describe('nav.topLevel (first-party-gated dev mock)', () => {
   })
 })
 
+describe('nav.reportLocation (dev no-op handler)', () => {
+  it('resolves { ok: true } — dev host has no real address bar to mirror', async () => {
+    const sdk = await connect({ dev: true })
+    await expect(sdk.nav.reportLocation({ path: '/foo?a=1#b' })).resolves.toEqual({ ok: true })
+    sdk.port.close()
+  })
+
+  it('accepts the optional replace flag', async () => {
+    const sdk = await connect({ dev: true })
+    await expect(sdk.nav.reportLocation({ path: '/foo', replace: true })).resolves.toEqual({
+      ok: true,
+    })
+    sdk.port.close()
+  })
+})
+
+describe('nav.onNavigate', () => {
+  it('delivers a nav.navigate push to the subscriber', async () => {
+    // Raw MessageChannel — the dev mock host never emits nav.navigate on its
+    // own (that push is produced by the real host frame on top-level
+    // back/forward), so drive the wire directly.
+    const chan = new MessageChannel()
+    chan.port1.start()
+    chan.port2.start()
+    const sdk = new MythworkClient(chan.port2)
+    const received: Array<{ path: string }> = []
+    const off = sdk.nav.onNavigate(p => received.push(p))
+    chan.port1.postMessage({ type: 'nav.navigate', path: '/deep/link?x=1' })
+    await new Promise(r => setTimeout(r, 10))
+    expect(received).toEqual([{ type: 'nav.navigate', path: '/deep/link?x=1' }])
+    off()
+    // Post-unsubscribe pushes are dropped.
+    chan.port1.postMessage({ type: 'nav.navigate', path: '/other' })
+    await new Promise(r => setTimeout(r, 10))
+    expect(received.length).toBe(1)
+    sdk.port.close()
+    chan.port1.close()
+  })
+})
+
 describe('kernel.getUser', () => {
   it('returns anonymous sentinel when signed out', async () => {
     const sdk = makeClient()

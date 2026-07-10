@@ -156,6 +156,19 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     auth: { signedOut: 'result', onError: 'result' },
     paginated: true,
   },
+  'explore.sharedWithMe': {
+    http: { verb: 'GET', path: '/explore/shared-with-me' },
+    auth: { signedOut: 'result', onError: 'result' },
+    paginated: true,
+  },
+  'explore.mintPreviewToken': {
+    http: { verb: 'POST', path: '/explore/apps/:projectId/preview-token' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  'explore.shareSettings': {
+    http: { verb: 'POST', path: '/explore/apps/:projectId/share-settings' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
   'explore.rate': {
     http: { verb: 'POST', path: '/explore/rate' },
     auth: { signedOut: 'result', onError: 'result' },

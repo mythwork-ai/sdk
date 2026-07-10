@@ -53,6 +53,27 @@ export const PING_BUDGET_MS = 5000
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 
 /**
+ * Default timeout, in milliseconds, for RPCs that block on human-paced
+ * interaction rather than pure machine round-trip time — today just
+ * `kernel.signIn` (host-iframe's `signInWithPopup` gives a real OAuth popup up
+ * to 90s to complete, see `packages/host-iframe/src/auth.ts`). `kernel.signOut`
+ * deliberately stays on the generic {@link DEFAULT_REQUEST_TIMEOUT_MS} instead
+ * — `signOutFlow` is synchronous and never waits on a popup, so there's no
+ * human-paced flow to budget extra time for (see `client.ts`'s `auth.signOut`).
+ *
+ * {@link DEFAULT_REQUEST_TIMEOUT_MS} is tuned for ordinary machine-speed calls
+ * (fs/db/git reads and writes) and is deliberately short so a truly stuck
+ * request fails fast. Applying that same 30s budget to a call that wraps a
+ * user typing their Google password was a real, always-reproducible bug: the
+ * client gave up and reported a timeout while the popup — and the user — were
+ * still working on a flow that can legitimately take longer than 30 seconds,
+ * even on a good connection. Kept well above host-iframe's 90s popup ceiling
+ * so the host's own give-up (which resolves cleanly to `null`/anonymous) is
+ * always what the caller sees, not a client-side timeout racing ahead of it.
+ */
+export const DEFAULT_INTERACTIVE_TIMEOUT_MS = 120_000
+
+/**
  * The `window` property the inner-app shim installs the received MessagePort
  * on. Code looks up `window.__oc?.port` to discover the live channel.
  */
