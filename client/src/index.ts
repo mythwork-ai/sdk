@@ -24,7 +24,13 @@ export { MythworkClient } from './client'
 export type { EventHandler, EventPrefix } from './client'
 export { requestOverPort, streamOverPort, PushRouter } from './transport'
 export type { RequestOptions, StreamOptions, PushHandler } from './transport'
-export { acquirePort, browserEnv, getInitialPath, NO_PORT_ERROR } from './handshake'
+export {
+  acquirePort,
+  browserEnv,
+  getInitialPath,
+  getShareBaseOrigin,
+  NO_PORT_ERROR,
+} from './handshake'
 export type { HandshakeEnv, HandshakeOptions } from './handshake'
 
 // Top-level auth-consume: obtain + use the platform session from a page with NO

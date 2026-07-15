@@ -666,9 +666,17 @@ export interface MethodMap {
    * returns `{ ok: false, reason: 'sign_in_required' }` without a network
    * call, same as `explore.myRatings`. Backing: `apps` D1, scoped to the
    * authenticated viewer's own `publisher_user_id` only.
+   *
+   * `projectId` (optional): narrow to a single owned project — no cursor, no
+   * `nextCursor`, at most one item. For a caller (e.g. an editor hydrating
+   * its own open project's publish status) that needs one project's
+   * status/alias without paging the whole list or using the existence-hiding
+   * `explore.getApp` (wrong tool for "is *my* project published"). A
+   * `projectId` the viewer doesn't own resolves to `items: []`, same as if
+   * it were simply absent from the unfiltered list.
    */
   'explore.myApps': {
-    params: { cursor?: string }
+    params: { cursor?: string; projectId?: string }
     result: { items: MyAppSummary[]; nextCursor?: string } | { ok: false; reason: string }
   }
   /**

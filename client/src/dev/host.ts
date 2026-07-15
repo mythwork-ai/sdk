@@ -251,6 +251,49 @@ function ensureProject(pid: string): DevProject {
   return p
 }
 
+const MAX_PATH_BYTES = 4096
+
+/**
+ * Validate an fs path/prefix the way the real host's kernel does
+ * (orbit-kernel/src/paths.ts `canonicalizePath`) — same checks, same error
+ * messages — WITHOUT adopting its key canonicalization: dev-host storage
+ * keeps keying files by the exact string the client wrote.
+ *
+ * The dev host previously accepted anything here, which let app bugs sail
+ * through dev that production rejects: `fs.list({ prefix: '' })` "listed
+ * everything" in dev but throws `path must be a non-empty string` on the
+ * real host (myth-ide#159). Validation parity closes that class; full
+ * canonicalization parity (`a.tsx` ≡ `/a.tsx` ≡ `//a.tsx`, and list results
+ * always leading-slash) is deliberately NOT replicated — dev consumers key
+ * files by the strings they wrote, and changing the stored/listed shape is
+ * a separate, breaking decision.
+ */
+function assertValidPath(input: unknown): string {
+  if (typeof input !== 'string' || input.length === 0) {
+    throw new Error('path must be a non-empty string')
+  }
+  const slashed = input.startsWith('/') ? input : `/${input}`
+  if (input.includes('\0')) {
+    throw new Error('path contains null byte')
+  }
+  const segments: string[] = []
+  for (const segment of slashed.split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      segments.pop()
+      continue
+    }
+    segments.push(segment)
+  }
+  if (segments.length === 0) {
+    throw new Error(`path canonicalizes to root: ${slashed}`)
+  }
+  if (new TextEncoder().encode(`/${segments.join('/')}`).byteLength > MAX_PATH_BYTES) {
+    throw new Error('path exceeds 4096 bytes')
+  }
+  return input
+}
+
 /** Push `fs.changed` to every subscriber of `project` except the originator. */
 function pushFsChanged(
   project: DevProject,
@@ -936,7 +979,7 @@ const handlers: Record<string, Handler> = {
 
   'fs.read'(args) {
     const project = ensureProject(args['pid'] as string)
-    const path = args['path'] as string
+    const path = assertValidPath(args['path'])
     const bytes = project.files.get(path)
     if (!bytes) throw new Error(`fs.read: ${path} not found`)
     return bytes
@@ -944,7 +987,7 @@ const handlers: Record<string, Handler> = {
 
   'fs.write'(args, _state, ctx) {
     const project = ensureProject(args['pid'] as string)
-    const path = args['path'] as string
+    const path = assertValidPath(args['path'])
     const existed = project.files.has(path)
     project.files.set(path, args['bytes'] as Uint8Array)
     pushFsChanged(project, ctx.hostPort, path, existed ? 'updated' : 'created')
@@ -953,20 +996,23 @@ const handlers: Record<string, Handler> = {
 
   'fs.list'(args) {
     const project = ensureProject(args['pid'] as string)
-    const prefix = args['prefix'] as string | undefined
+    // An omitted prefix means "everything"; a PRESENT prefix must be a valid
+    // path — the real host rejects `prefix: ''` rather than treating it as
+    // no-filter, and dev must fail the same way.
+    const prefix = args['prefix'] === undefined ? undefined : assertValidPath(args['prefix'])
     const paths = [...project.files.keys()]
     return prefix ? paths.filter(p => p.startsWith(prefix)) : paths
   },
 
   'fs.exists'(args) {
     const project = ensureProject(args['pid'] as string)
-    return { exists: project.files.has(args['path'] as string) }
+    return { exists: project.files.has(assertValidPath(args['path'])) }
   },
 
   'fs.rename'(args, _state, ctx) {
     const project = ensureProject(args['pid'] as string)
-    const from = args['from'] as string
-    const to = args['to'] as string
+    const from = assertValidPath(args['from'])
+    const to = assertValidPath(args['to'])
     const bytes = project.files.get(from)
     if (bytes) {
       project.files.delete(from)
@@ -979,7 +1025,7 @@ const handlers: Record<string, Handler> = {
 
   'fs.delete'(args, _state, ctx) {
     const project = ensureProject(args['pid'] as string)
-    const path = args['path'] as string
+    const path = assertValidPath(args['path'])
     if (project.files.delete(path)) pushFsChanged(project, ctx.hostPort, path, 'deleted')
     return { ok: true }
   },

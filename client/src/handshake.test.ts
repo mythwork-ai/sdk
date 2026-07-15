@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { acquirePort, getInitialPath, type HandshakeEnv, NO_PORT_ERROR } from './handshake'
+import {
+  acquirePort,
+  getInitialPath,
+  getShareBaseOrigin,
+  type HandshakeEnv,
+  NO_PORT_ERROR,
+} from './handshake'
 import type { OcGlobal } from '@mythwork/protocol'
 
 // A fake HandshakeEnv: an in-process EventTarget standing in for `window`, plus
@@ -320,6 +326,24 @@ describe('acquirePort', () => {
     expect(getInitialPath(env)).toBe('/showcase')
     chan.port1.close()
     chan.port2.close()
+  })
+})
+
+describe('getShareBaseOrigin', () => {
+  it('captures the host-supplied outer origin alongside the port', async () => {
+    const env = new FakeEnv()
+    const chan = new MessageChannel()
+    env.setHostPort(chan.port2)
+    await acquirePort(env)
+    // FakeEnv's host replies oc-init with shareBaseOrigin 'https://lab.example'
+    // (mirroring the deployed host-iframe bridge).
+    expect(getShareBaseOrigin(env)).toBe('https://lab.example')
+    chan.port1.close()
+    chan.port2.close()
+  })
+
+  it('is undefined before any handshake ran (dev/standalone)', () => {
+    expect(getShareBaseOrigin(new FakeEnv())).toBeUndefined()
   })
 })
 

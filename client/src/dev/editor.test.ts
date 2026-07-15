@@ -31,6 +31,50 @@ describe('dev host — single-client project/fs/git', () => {
     expect((await sdk.fs.exists({ pid, path: '/missing' })).exists).toBe(false)
   })
 
+  // Validation parity with the real host (orbit-kernel's canonicalizePath):
+  // the dev host must reject the same inputs with the same messages, so an
+  // app bug like `fs.list({ prefix: '' })` fails in dev instead of first
+  // surfacing under a real host connection (myth-ide#159).
+  it('rejects an empty path/prefix the way the real host does', async () => {
+    const { pid } = await sdk.project.create({})
+    await expect(sdk.fs.list({ pid, prefix: '' })).rejects.toThrow(
+      'path must be a non-empty string',
+    )
+    await expect(sdk.fs.read({ pid, path: '' })).rejects.toThrow('path must be a non-empty string')
+    await expect(sdk.fs.write({ pid, path: '', bytes: enc.encode('x') })).rejects.toThrow(
+      'path must be a non-empty string',
+    )
+    await expect(sdk.fs.exists({ pid, path: '' })).rejects.toThrow(
+      'path must be a non-empty string',
+    )
+    await expect(sdk.fs.delete({ pid, path: '' })).rejects.toThrow(
+      'path must be a non-empty string',
+    )
+    await expect(sdk.fs.rename({ pid, from: '', to: '/b' })).rejects.toThrow(
+      'path must be a non-empty string',
+    )
+    await expect(sdk.fs.rename({ pid, from: '/a', to: '' })).rejects.toThrow(
+      'path must be a non-empty string',
+    )
+  })
+
+  it('rejects root-only and null-byte paths with the kernel error messages', async () => {
+    const { pid } = await sdk.project.create({})
+    await expect(sdk.fs.read({ pid, path: '/' })).rejects.toThrow('path canonicalizes to root: /')
+    await expect(sdk.fs.read({ pid, path: '.' })).rejects.toThrow('path canonicalizes to root')
+    await expect(sdk.fs.read({ pid, path: 'a\0b' })).rejects.toThrow('path contains null byte')
+    // An omitted prefix still means "everything" — only a PRESENT invalid one throws.
+    await sdk.fs.write({ pid, path: '/ok.txt', bytes: enc.encode('x') })
+    expect(await sdk.fs.list({ pid })).toEqual(['/ok.txt'])
+  })
+
+  it('rejects paths whose canonicalized byte length exceeds 4096', async () => {
+    const { pid } = await sdk.project.create({})
+    // '/' + 4096 ASCII chars → canonicalized to '/' + segment → 4097 bytes.
+    const tooLong = `/${'a'.repeat(4096)}`
+    await expect(sdk.fs.read({ pid, path: tooLong })).rejects.toThrow('path exceeds 4096 bytes')
+  })
+
   it('commit → log → head, and showVersion returns the historical snapshot', async () => {
     const { pid } = await sdk.project.create({})
     await sdk.fs.write({ pid, path: '/index.html', bytes: enc.encode('<h1>v1</h1>') })

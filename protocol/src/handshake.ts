@@ -107,9 +107,12 @@ export interface OcInitMessage {
 /**
  * Shape of the `window.__oc` global the inner-app shim maintains. `port` is the
  * MessagePort transferred via {@link OcInitMessage}, present once the handshake
- * completes. `initialPath` mirrors {@link OcInitMessage.initialPath}.
+ * completes. `initialPath` mirrors {@link OcInitMessage.initialPath};
+ * `shareBaseOrigin` mirrors {@link OcInitMessage.shareBaseOrigin} so apps can
+ * build share links off the OUTER host origin after the handshake settles.
  */
 export interface OcGlobal {
   port?: MessagePort
   initialPath?: string
+  shareBaseOrigin?: string
 }

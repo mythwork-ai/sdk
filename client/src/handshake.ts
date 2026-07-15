@@ -171,6 +171,17 @@ export function getInitialPath(env: HandshakeEnv = browserEnv()): string | undef
 }
 
 /**
+ * Read the OUTER host-frame origin — the alias/canonical origin the page is
+ * actually served on — from the negotiated `window.__oc` global, for building
+ * share links. Only meaningful once `connect()` has resolved: `undefined`
+ * means no host has supplied one (dev/standalone), and apps should fall back
+ * to their own `location.origin`.
+ */
+export function getShareBaseOrigin(env: HandshakeEnv = browserEnv()): string | undefined {
+  return env.getOcGlobal()?.shareBaseOrigin
+}
+
+/**
  * Acquire the host MessagePort, running whichever handshake path applies.
  *
  * Resolves with the started port (path (a): this module already verified it
@@ -253,12 +264,16 @@ export function acquirePort(env: HandshakeEnv, opts?: HandshakeOptions): Promise
       // events, regardless of the calling code's privilege in this realm.
       if (!me.isTrusted) return
       if (!env.isHostSource(me.source)) return
-      const d = me.data as { type?: string; initialPath?: string } | null
+      const d = me.data as {
+        type?: string
+        initialPath?: string
+        shareBaseOrigin?: string
+      } | null
       if (d?.type !== OC_INIT) return
       const port = me.ports?.[0]
       if (!port) return
       verifiedPorts.add(port)
-      env.setOcGlobal({ port, initialPath: d.initialPath })
+      env.setOcGlobal({ port, initialPath: d.initialPath, shareBaseOrigin: d.shareBaseOrigin })
       env.dispatchEvent(new Event('ocready'))
       adopt(port)
     }
