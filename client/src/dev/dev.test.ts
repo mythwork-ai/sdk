@@ -114,6 +114,53 @@ describe('explore.getApp', () => {
   })
 })
 
+describe('explore.myApps', () => {
+  let sdk: MythworkClient
+
+  beforeEach(() => {
+    sdk = makeClient()
+  })
+  afterEach(() => {
+    sdk.port.close()
+  })
+
+  it('signed-out returns { ok:false, reason:"sign_in_required" }', async () => {
+    const result = await sdk.explore.myApps({})
+    expect(result).toEqual({ ok: false, reason: 'sign_in_required' })
+  })
+
+  it('returns a single-item list for a known projectId, flagged live and unrestricted', async () => {
+    await sdk.auth.signIn()
+    const first = SEED_APPS[0]!
+    const result = await sdk.explore.myApps({ projectId: first.projectId })
+    expect('items' in result).toBe(true)
+    if ('items' in result) {
+      expect(result.items).toEqual([
+        expect.objectContaining({ projectId: first.projectId, status: 'live', restricted: false }),
+      ])
+    }
+  })
+
+  // The dev host has no owned-project registry of its own — a project
+  // created via project.create() (the common dev/test case) never matches
+  // the static SEED_APPS catalog, so it resolves to an empty list rather
+  // than throwing. Mirrors the real endpoint's no-leak posture (never a
+  // 404) for "no project of mine by this id," not an error condition.
+  it('resolves to empty items for an unknown projectId, never throws', async () => {
+    await sdk.auth.signIn()
+    const result = await sdk.explore.myApps({ projectId: 'nonexistent' })
+    expect('items' in result).toBe(true)
+    if ('items' in result) expect(result.items).toEqual([])
+  })
+
+  it('resolves to empty items when no projectId is given', async () => {
+    await sdk.auth.signIn()
+    const result = await sdk.explore.myApps({})
+    expect('items' in result).toBe(true)
+    if ('items' in result) expect(result.items).toEqual([])
+  })
+})
+
 describe('explore.trendingApps', () => {
   it('returns the trending rail', async () => {
     const sdk = makeClient()

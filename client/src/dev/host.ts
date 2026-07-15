@@ -49,6 +49,7 @@ import type {
   CommitAuthor,
   CommitInfo,
   FavoriteEdge,
+  MyAppSummary,
   NotificationInboxItem,
   NotificationPrefs,
   ProjectInfo,
@@ -452,6 +453,27 @@ const handlers: Record<string, Handler> = {
     const app = SEED_APPS.find(a => a.projectId === projectId)
     if (!app) throw new Error(`explore.getApp: app ${projectId} not found`)
     return overriddenDetail(app, state.appMetaOverrides.get(projectId))
+  },
+
+  // gated-RESULT (requireViewer on the real backend): signed-out never leaves
+  // this process. The dev host has no owned-project registry of its own
+  // (dynamically created test/dev projects live in the separate kernel/
+  // project layer, not this explore-focused DevState) — so this only ever
+  // resolves a projectId against the static SEED_APPS catalog, same as
+  // explore.getApp. Unlike getApp, an unmatched projectId is NOT an error
+  // here: the real endpoint returns items: [] for "no such project of mine,"
+  // never a 404/throw, and that's exactly the common case for a freshly
+  // created dev/test project — callers that need a real "already published"
+  // fixture mock this directly (see useAppBuild.publish.test.tsx), same
+  // pattern already used for getApp.
+  'explore.myApps'(args, state) {
+    if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
+    const projectId = args['projectId'] as string | undefined
+    const app = projectId ? SEED_APPS.find(a => a.projectId === projectId) : undefined
+    if (!app) return { items: [] }
+    const detail = applyAppMeta(app, state.appMetaOverrides.get(app.projectId))
+    const item: MyAppSummary = { ...detail, status: 'live', restricted: false }
+    return { items: [item] }
   },
 
   'explore.relatedApps'(args, state) {
