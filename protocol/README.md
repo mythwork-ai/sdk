@@ -85,7 +85,7 @@ Pushes carry **no `id`**. The `type` field is the event string (a key of
 
 > The catalog below (**52 methods**, **8 events**) documents the original
 > deployed-v1 surface. A separate **Explore surface** section near the end
-> describes the **+22** explore/engagement methods. All **+22** are
+> describes the **+31** explore/engagement/stacks methods. All **+31** are
 > `@experimental` — the API surface may still evolve before 1.0.
 
 ## Methods catalog
@@ -267,7 +267,7 @@ the `type` field.
 > on purpose.** The methods and types in this section back the explore /
 > engagement backend. The one exception is **`project.remix`**, which still has
 > **no bridge** and is **not yet served**. The v1 catalog above documents the
-> original surface (**52 methods**, **8 events**); this section adds **+22
+> original surface (**52 methods**, **8 events**); this section adds **+31
 > methods** and the data types they use. Everything here stays `@experimental`
 > — the API surface may still evolve before 1.0.
 
@@ -282,15 +282,16 @@ Conventions for this surface:
   rows: `favoritedByViewer`, my rating, …). Engagement writes and `/me`-style
   reads are **signed-in** (gated host-side); noted per method below.
 
-### Methods (+22)
+### Methods (+31)
 
-#### explore.* (15)
+#### explore.* (16)
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
 | `explore.listApps` | `{ tags?: string[]; sort?: AppSort; maker?: string; cursor?: string }` | `{ items: AppSummary[]; nextCursor?: string }` | Public; enriched with session. Backing: projects + app_meta + app_tags + app_stats + profiles |
-| `explore.getApp` | `{ projectId: string }` | `AppDetail` | Public; enriched with session. `remixCount` via `projects.forked_from_project_id` |
+| `explore.getApp` | `{ projectId: string }` | `AppDetail` | Public; enriched with session. `remixCount`/`remixedFrom` via `projects.forked_from_project_id` |
 | `explore.relatedApps` | `{ projectId: string }` | `{ items: AppSummary[] }` | Public. Backing: app_tags |
+| `explore.listRemixes` | `{ projectId: string; cursor?: string }` | `{ items: AppSummary[]; nextCursor?: string }` | Public; enriched with session. The reverse of `getApp`'s `remixedFrom`. Backing: `projects.forked_from_project_id` (reverse index) joined to apps |
 | `explore.trendingApps` | `{}` | `{ items: AppSummary[] }` | Public. Backing: app_stats (7d vs prev-7d) |
 | `explore.tags` | `{}` | `{ items: TagCount[] }` | Public. Backing: app_tags |
 | `explore.search` | `{ q: string }` | `{ apps: AppSummary[]; makers: MakerSummary[] }` | Public; `@handle` / `#tag` operators server-side. Backing: app_meta + profiles |
@@ -303,6 +304,22 @@ Conventions for this surface:
 | `explore.myApps` | `{ cursor?: string }` | `{ items: MyAppSummary[]; nextCursor?: string } \| { ok: false; reason: string }` | **Signed-in;** the viewer's own apps — published, unpublished, and scan-gate-restricted — flagged (`unpublished`/`restricted`) rather than filtered. Scoped only to the caller's own `publisher_user_id`. Backing: apps D1 |
 | `explore.comments` | `{ projectId: string; cursor?: string }` | `{ items: CommentNode[]; nextCursor?: string }` | Public; newest first, one nesting level. Backing: comments D1 |
 | `explore.addComment` | `{ projectId: string; body: string; parentCommentId?: string }` | `CommentNode \| { ok: false; reason: string }` | **Signed-in;** `parentCommentId` present = reply (cannot nest further). Backing: comments D1 |
+
+#### stacks.* (9)
+
+Signed-in-scoped app collections, replacing the frontend's localStorage-only `stacksStore.ts`. Membership is many-to-many (an app can belong to more than one stack); `foldedCategoryIds`/`categoryId` are opaque, frontend-owned routing hints — the category taxonomy itself isn't a backend concept. A stack's own `stackId` IS its share link — no separate token. `visibility` (default `'public'`) gates both `stacks.discover` and `stacks.resolveShare`: `'private'` excludes a stack from discovery AND makes resolveShare refuse anyone but the owner, checked live so flipping a stack private instantly revokes every previously-shared link. `stacks.resolveShare` and `stacks.discover` are the two public/anon-OK reads in this namespace — every other method requires a session.
+
+| Wire method | Params | Result | Notes |
+|---|---|---|---|
+| `stacks.list` | `{}` | `{ items: StackSummary[] }` | **Signed-in** (throws on both axes — private data, no anonymous variant). Unpaged. Backing: stacks + stack_items |
+| `stacks.create` | `{ name: string; kind?: StackKind; foldedCategoryIds?: string[]; visibility?: StackVisibility }` | `StackSummary \| { ok: false; reason: string }` | **Signed-in (gated-result).** `kind` defaults `'custom'`; `visibility` defaults `'public'` |
+| `stacks.rename` | `{ stackId: string; name: string }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result); owner-gated** |
+| `stacks.delete` | `{ stackId: string }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result); owner-gated;** cascades stack_items |
+| `stacks.addApp` | `{ stackId: string; projectId: string; categoryId?: string }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result); owner-gated;** upserts the membership edge |
+| `stacks.removeApp` | `{ stackId: string; projectId: string }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result); owner-gated;** idempotent no-op if absent |
+| `stacks.splitOutCategory` | `{ hostStackId: string; categoryId: string; newStackName: string; threshold: number }` | `{ graduated: false } \| { graduated: true; stack: StackSummary }` | **Signed-in (gated-result); owner-gated.** Atomic multi-item move; below-threshold and not-owned both collapse to `{ graduated: false }` |
+| `stacks.resolveShare` | `{ stackId: string }` | `SharedStack` | **Public**, visibility-gated: refuses (404) a `'private'` stack for a non-owner. Unknown stackId → uniform 404 that the bridge THROWS (existence-hiding, same posture as `explore.getApp`). `items` excludes any app no longer currently visible |
+| `stacks.discover` | `{ cursor?: string; limit?: number }` | `{ items: StackSummary[]; nextCursor?: string }` | **Public.** Cursor-paginated listing of `visibility: 'public'` stacks across all owners, newest first |
 
 #### profile.* (6 additions)
 
@@ -334,7 +351,7 @@ Conventions for this surface:
 |---|---|
 | `MakerRef` | `{ handle: string; displayName: string }` — lightweight maker reference embedded in app/comment rows |
 | `AppSummary` | `{ projectId, alias, name, tagline, description: string \| null, maker: MakerRef, tags: string[], launches, publishedAt, theme?, badge?, editorsChoice, rating: { average, count }, trendPct?, favoritedByViewer? }` — one app in discovery lists; `description` is the published top-level package.json `description` (`null` when none); `favoritedByViewer` present only with a session |
-| `AppDetail` | `AppSummary & { makersNote?: string; remixCount: number }` — full app detail from `explore.getApp` |
+| `AppDetail` | `AppSummary & { makersNote?: string; remixCount: number; remixedFrom: { projectId: string; name: string } \| null }` — full app detail from `explore.getApp`; `remixedFrom` is `null` for an organic app or a non-visible parent (existence-hiding) |
 | `MyAppSummary` | `AppSummary & { unpublished: boolean; restricted: boolean }` — one app in the viewer's own `explore.myApps` list; flags replace the filtering the public listing applies |
 | `MakerSummary` | `{ handle, displayName, picture?, bio?, location?, link?, appCount, totalLaunches, followedByViewer? }` — maker card; `followedByViewer` present only with a session |
 | `SpotlightItem` | `{ projectId, kicker, headline, blurb }` — the editorial spotlight slot |
@@ -345,3 +362,7 @@ Conventions for this surface:
 | `FavoriteEdge` | `{ targetKind: 'creator' \| 'app'; targetId: string; createdAt: number }` — one favorite/follow edge; `targetId` is the app `projectId` or creator `handle` |
 | `NotificationPrefs` | `{ comments: boolean; remixes: boolean; followers: boolean; weeklyDigest: boolean }` — the viewer's notification toggles |
 | `AppSort` | `'popular' \| 'new' \| 'trending'` — sort order for `explore.listApps` |
+| `StackKind` | `'default' \| 'revealed' \| 'custom'` — `'default'`: always-visible starter category. `'revealed'`: spawned on first save or by `stacks.splitOutCategory`. `'custom'`: user-created |
+| `StackVisibility` | `'public' \| 'private'` — `'public'` (default) surfaces in `stacks.discover` and resolves for anyone; `'private'` excludes it from discovery and makes `stacks.resolveShare` refuse non-owners |
+| `StackSummary` | `{ stackId, name, kind: StackKind, foldedCategoryIds: string[], visibility: StackVisibility, projectIds: string[] }` — one stack from `stacks.list`/`stacks.create`/`stacks.splitOutCategory`/`stacks.discover`; `projectIds` is unpaged current membership; `stackId` itself is the stack's share link |
+| `SharedStack` | `{ stackId, name, items: AppSummary[] }` — the public resolved contents from `stacks.resolveShare`; `items` excludes any app no longer currently visible |

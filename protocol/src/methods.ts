@@ -19,6 +19,7 @@ import type {
   CommitInfo,
   DiffEntry,
   FavoriteEdge,
+  MakerRef,
   MakerSummary,
   MyAppSummary,
   NotificationInboxItem,
@@ -29,7 +30,11 @@ import type {
   ProjectInfo,
   RoomDescriptor,
   SharedAppSummary,
+  SharedStack,
   SpotlightItem,
+  StackKind,
+  StackSummary,
+  StackVisibility,
   TagCount,
   User,
   UserAccess,
@@ -528,7 +533,8 @@ export interface MethodMap {
    *
    * Read one app's full detail by canonical `projectId`. Public read; an
    * attached session enriches `favoritedByViewer`. Backing: same tables as
-   * `explore.listApps`; `remixCount` via `projects.forked_from_project_id`.
+   * `explore.listApps`; `remixCount`/`remixedFrom` via
+   * `projects.forked_from_project_id`.
    */
   'explore.getApp': { params: { projectId: string }; result: AppDetail }
   /**
@@ -540,6 +546,18 @@ export interface MethodMap {
   'explore.relatedApps': {
     params: { projectId: string }
     result: { items: AppSummary[] }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Apps remixed FROM the given `projectId` — the reverse direction of
+   * `explore.getApp`'s `remixedFrom`. Public read. Paginated.
+   * Backing: `projects.forked_from_project_id` (migration 0012 reverse
+   * index) joined to `apps`.
+   */
+  'explore.listRemixes': {
+    params: { projectId: string; cursor?: string }
+    result: { items: AppSummary[]; nextCursor?: string }
   }
   /**
    * @experimental — API may still evolve before 1.0.
@@ -793,6 +811,146 @@ export interface MethodMap {
     result: Ok | { ok: false; reason: string }
   }
 
+  // ── stacks.* ─────────────────────────────────────────────────────────────
+  // Signed-in-scoped app collections (myth-fff PR #38 handoff item 3),
+  // replacing the frontend's localStorage-only stacksStore.ts. Managing a
+  // stack (listing, creating, renaming, adding apps, etc.) requires a
+  // session — the exceptions are `resolveShare` and `discover`. A stack's own
+  // `stackId` IS its share link — there is no separate token/`stacks.share`
+  // method. Reads (`list`) throw on both axes (no token / any non-2xx) —
+  // mirrors `profile.myFavorites`, private data with no anonymous-downgrade
+  // posture. Writes are gated-result on both axes — mirrors
+  // `explore.rate`/`addComment`: no token → `{ ok:false,
+  // reason:'sign_in_required' }` with zero network; a 4xx → `{ ok:false,
+  // reason }`.
+  //
+  // Membership (`stack_items`) is many-to-many: an app can belong to more
+  // than one stack for the same owner. `foldedCategoryIds`/`categoryId` are
+  // opaque, frontend-owned routing hints — the 24-item category taxonomy
+  // itself isn't a backend concept (see the handoff doc's item 2, still an
+  // open product question).
+  //
+  // `visibility` (defaults `'public'`) gates both `stacks.discover` and
+  // `stacks.resolveShare`: `'private'` excludes a stack from discovery AND
+  // makes resolveShare refuse anyone but the owner — checked live against
+  // current state, so flipping a stack private instantly revokes every
+  // previously-shared link (matches how Spotify/YouTube/Notion/Figma gate
+  // link-sharing on a live flag rather than a rotatable secret).
+
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * The caller's own stacks, each with its current member project ids.
+   * Signed-in; throws with no token or on any non-2xx. Unpaged — a bounded
+   * personal set. Backing: stacks + stack_items (migration 0025).
+   */
+  'stacks.list': { params: Record<string, never>; result: { items: StackSummary[] } }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Create a stack. `kind` defaults `'custom'`; `foldedCategoryIds` defaults
+   * `[]`; `visibility` defaults `'public'`. Gated-result on both axes. The
+   * returned `stackId` doubles as the stack's share link (no separate
+   * token).
+   */
+  'stacks.create': {
+    params: {
+      name: string
+      kind?: StackKind
+      foldedCategoryIds?: string[]
+      visibility?: StackVisibility
+    }
+    result: StackSummary | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Rename a stack. Owner-gated: `stackId` not the caller's → `{ ok:false,
+   * reason:'not_found' }` (no existence leak — a stack has no public
+   * visibility to begin with).
+   */
+  'stacks.rename': {
+    params: { stackId: string; name: string }
+    result: Ok | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Delete a stack and its membership rows. Owner-gated, same posture as
+   * `stacks.rename`.
+   */
+  'stacks.delete': { params: { stackId: string }; result: Ok | { ok: false; reason: string } }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Add an app to a stack (upserts the membership edge — an app can be in
+   * more than one stack). `categoryId` tags which category this was routed
+   * through, for `stacks.splitOutCategory`'s count; omit for a manual add
+   * with no routing category. Owner-gated, same posture as `stacks.rename`.
+   */
+  'stacks.addApp': {
+    params: { stackId: string; projectId: string; categoryId?: string }
+    result: Ok | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Remove an app from a stack. Idempotent: a no-op success if the app isn't
+   * currently in this stack. Owner-gated, same posture as `stacks.rename`.
+   */
+  'stacks.removeApp': {
+    params: { stackId: string; projectId: string }
+    result: Ok | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Atomically split a folded category out of `hostStackId` into its own
+   * stack once it holds `threshold` or more items under `categoryId`:
+   * creates a new stack scoped to just that category, moves the matching
+   * items onto it, and strips `categoryId` out of the host's
+   * `foldedCategoryIds`. Below `threshold`, OR `hostStackId` not the
+   * caller's, both → `{ graduated: false }` (a stack has no public existence
+   * to leak, so there's nothing gained by distinguishing the two here). The
+   * category taxonomy/threshold is frontend-supplied, not backend policy —
+   * see this section's header.
+   *
+   * The split-out stack is born `visibility: 'public'`; its `stackId` (on
+   * `stack.stackId`) doubles as its share link, same as `stacks.create`.
+   */
+  'stacks.splitOutCategory': {
+    params: { hostStackId: string; categoryId: string; newStackName: string; threshold: number }
+    result:
+      | { graduated: false }
+      | { graduated: true; stack: StackSummary }
+      | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Resolve a stack by its own `stackId` — the id IS the share link — to its
+   * current, visibility-gated contents. Anonymous-OK, along with
+   * `stacks.discover` — every other method here requires a session.
+   * `visibility: 'public'` resolves for anyone; `'private'` resolves only
+   * for the owner (checked against an attached Bearer, if any). Unknown
+   * stackId and private-not-owner both collapse to a uniform 404 that the
+   * bridge THROWS (existence-hiding, same posture as `explore.getApp`'s 404 —
+   * non-nullable result, no `null` branch to discriminate on).
+   */
+  'stacks.resolveShare': { params: { stackId: string }; result: SharedStack }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Paginated listing of `visibility: 'public'` stacks across all owners,
+   * newest first. Anonymous-OK, same posture as `explore.listApps`/
+   * `stacks.resolveShare`. Cursor-paginated (see `explore.listApps` for the
+   * shared keyset-cursor convention).
+   */
+  'stacks.discover': {
+    params: { cursor?: string; limit?: number }
+    result: { items: StackSummary[]; nextCursor?: string }
+  }
+
   // ── profile.* (additions) ───────────────────────────────────────────────
   // @experimental — API may still evolve before 1.0. These extend the
   // deployed `profile.*` namespace above.
@@ -826,6 +984,21 @@ export interface MethodMap {
   'profile.myFavorites': {
     params: { targetKind?: 'creator' | 'app' }
     result: { items: FavoriteEdge[] }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Followers of a creator by `handle` — the REVERSE of `profile.myFavorites`/
+   * `profile.setFavorite`'s follow edge: not "who the viewer follows" but "who
+   * follows this creator". Public read (no auth), keyset-paginated newest-first
+   * via `{ cursor? }` → `{ items, nextCursor? }` (the same convention
+   * `explore.listApps` uses). An unknown `handle` throws (the resource itself
+   * is unresolved, unlike a filter param that legitimately degrades to an
+   * empty page). Backing: favorites D1 (`idx_favorites_target`).
+   */
+  'profile.listFollowers': {
+    params: { handle: string; cursor?: string }
+    result: { items: MakerRef[]; nextCursor?: string }
   }
   /**
    * @experimental — API may still evolve before 1.0.

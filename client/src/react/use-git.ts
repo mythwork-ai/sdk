@@ -1,4 +1,4 @@
-// @mythwork/sdk/react — project-bound git hook. Ported from @orbitcode/git/react:
+// @mythwork/sdk/react — project-bound git hook. Ported from @mythwork/git/react:
 // same public shape (live head/log/hasUncommittedChanges + imperative
 // commit/checkout/deleteCommit/editCommitMessage/commitTree/flushDirty/show +
 // one-shot getHead/getHasUncommittedChanges + manual refresh). The pid comes

@@ -1,5 +1,5 @@
 // @mythwork/sdk/react — project-bound filesystem hook. Ported from
-// @orbitcode/file/react: same public shape (live `paths` + imperative
+// @mythwork/file/react: same public shape (live `paths` + imperative
 // read/write/list/exists/rename/remove + version-aware commit/log/showVersion/
 // diff/checkout + `subscribe`). The pid comes from `useProject()` and the wire
 // calls go through `useMythwork().sdk` (fs.* + git.*) instead of the fs-funcs

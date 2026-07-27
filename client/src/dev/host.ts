@@ -327,6 +327,13 @@ function devSha(project: DevProject): string {
   return `dev${(project.commits.length + 1).toString().padStart(7, '0')}`
 }
 
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
 /** A deterministic normalized OpenAI chat-completion for the dev ai.* handlers. */
 function devCompletion(text: string, model?: string): ChatCompletion {
   return {
@@ -1107,7 +1114,24 @@ const handlers: Record<string, Handler> = {
     return project.commits[0]?.sha ?? null
   },
 
-  'fs.hasUncommittedChanges'() {
+  'fs.hasUncommittedChanges'(args) {
+    // Content diff of the working tree against HEAD's snapshot, mirroring the
+    // real host's statusMatrix check (orbit-kernel git/read.ts): a write that
+    // restores identical bytes reads as CLEAN, and an unborn HEAD (no commits
+    // yet) is dirty iff any files exist. Known divergence: the dev store keys
+    // files by the exact string the client wrote (see assertValidPath — no
+    // canonicalization), so `a.txt` and `/a.txt` compare as different paths
+    // here where the kernel would canonicalize them to the same file.
+    const project = ensureProject(args['pid'] as string)
+    const head = project.commits[0]
+    if (!head) return { dirty: project.files.size > 0 }
+    const snapshot = project.snapshots.get(head.sha)
+    if (!snapshot) return { dirty: true } // unreachable in practice; fail closed like the kernel
+    if (snapshot.size !== project.files.size) return { dirty: true }
+    for (const [path, bytes] of project.files) {
+      const committed = snapshot.get(path)
+      if (!committed || !bytesEqual(bytes, committed)) return { dirty: true }
+    }
     return { dirty: false }
   },
 

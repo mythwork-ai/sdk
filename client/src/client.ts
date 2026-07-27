@@ -429,6 +429,14 @@ export class MythworkClient {
     /** Public read of a creator profile by handle. Wire: `profile.get`. */
     get: (params: MethodParams<'profile.get'>, opts?: RequestOptions) =>
       this.request('profile.get', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Followers of a creator
+     * by handle — the reverse of `setFavorite`'s follow edge. Public read
+     * (no auth), keyset-paginated via `{ cursor? }` → `{ items, nextCursor? }`.
+     * Wire: `profile.listFollowers`.
+     */
+    listFollowers: (params: MethodParams<'profile.listFollowers'>, opts?: RequestOptions) =>
+      this.request('profile.listFollowers', params, opts),
     /** Public read of the discovery landing. Wire: `profile.discover`. */
     discover: (params: MethodParams<'profile.discover'> = {}, opts?: RequestOptions) =>
       this.request('profile.discover', params, opts),
@@ -563,6 +571,13 @@ export class MythworkClient {
     relatedApps: (params: MethodParams<'explore.relatedApps'>, opts?: RequestOptions) =>
       this.request('explore.relatedApps', params, opts),
     /**
+     * @experimental — API may still evolve before 1.0. Apps remixed FROM the
+     * given `projectId` (the reverse of `getApp`'s `remixedFrom`). Paginated.
+     * Wire: `explore.listRemixes`.
+     */
+    listRemixes: (params: MethodParams<'explore.listRemixes'>, opts?: RequestOptions) =>
+      this.request('explore.listRemixes', params, opts),
+    /**
      * @experimental — API may still evolve before 1.0. The trending rail.
      * Wire: `explore.trendingApps`.
      */
@@ -682,6 +697,80 @@ export class MythworkClient {
       this.request('explore.mintPreviewToken', params, opts),
     shareSettings: (params: MethodParams<'explore.shareSettings'>, opts?: RequestOptions) =>
       this.request('explore.shareSettings', params, opts),
+  }
+
+  // ── stacks.* ──────────────────────────────────────────────────────────────
+  readonly stacks = {
+    /**
+     * @experimental — API may still evolve before 1.0. The caller's own
+     * stacks, each with its current member project ids. Signed-in; throws
+     * with no token or on any non-2xx. Wire: `stacks.list`.
+     */
+    list: (params: MethodParams<'stacks.list'> = {}, opts?: RequestOptions) =>
+      this.request('stacks.list', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Create a stack.
+     * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }`.
+     * Wire: `stacks.create`.
+     */
+    create: (params: MethodParams<'stacks.create'>, opts?: RequestOptions) =>
+      this.request('stacks.create', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Rename a stack.
+     * Owner-gated. Signed-out resolves
+     * `{ ok: false, reason: 'sign_in_required' }`. Wire: `stacks.rename`.
+     */
+    rename: (params: MethodParams<'stacks.rename'>, opts?: RequestOptions) =>
+      this.request('stacks.rename', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Delete a stack and its
+     * membership rows. Owner-gated. Signed-out resolves
+     * `{ ok: false, reason: 'sign_in_required' }`. Wire: `stacks.delete`.
+     */
+    delete: (params: MethodParams<'stacks.delete'>, opts?: RequestOptions) =>
+      this.request('stacks.delete', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Add an app to a
+     * stack (an app can belong to more than one stack). Owner-gated.
+     * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }`.
+     * Wire: `stacks.addApp`.
+     */
+    addApp: (params: MethodParams<'stacks.addApp'>, opts?: RequestOptions) =>
+      this.request('stacks.addApp', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Remove an app from a
+     * stack; idempotent no-op if it isn't currently in that stack.
+     * Owner-gated. Signed-out resolves
+     * `{ ok: false, reason: 'sign_in_required' }`. Wire: `stacks.removeApp`.
+     */
+    removeApp: (params: MethodParams<'stacks.removeApp'>, opts?: RequestOptions) =>
+      this.request('stacks.removeApp', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Atomically split a
+     * folded category out of a host stack into its own stack once it holds
+     * `threshold` or more items under that category. Owner-gated.
+     * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }`.
+     * Wire: `stacks.splitOutCategory`.
+     */
+    splitOutCategory: (params: MethodParams<'stacks.splitOutCategory'>, opts?: RequestOptions) =>
+      this.request('stacks.splitOutCategory', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Resolve a stack by its
+     * own `stackId` — the id IS the share link, no separate token —
+     * anonymous-OK, along with `stacks.discover`. `visibility: 'public'`
+     * resolves for anyone; `'private'` resolves only for the owner. Unknown
+     * stackId / private-not-owner both THROW (uniform 404, existence-hiding —
+     * same posture as `explore.getApp`). Wire: `stacks.resolveShare`.
+     */
+    resolveShare: (params: MethodParams<'stacks.resolveShare'>, opts?: RequestOptions) =>
+      this.request('stacks.resolveShare', params, opts),
+    /**
+     * @experimental — API may still evolve before 1.0. Paginated listing of
+     * `visibility: 'public'` stacks across all owners, newest first —
+     * anonymous-OK. Wire: `stacks.discover`.
+     */
+    discover: (params: MethodParams<'stacks.discover'> = {}, opts?: RequestOptions) =>
+      this.request('stacks.discover', params, opts),
   }
 
   // ── ai.* (mythwork-ai proxy) ──────────────────────────────────────────────

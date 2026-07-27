@@ -41,10 +41,13 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
     expect(paged).toEqual([
       'explore.comments',
       'explore.listApps',
+      'explore.listRemixes',
       'explore.myApps',
       'explore.sharedWithMe',
       'notifications.list',
       'notifications.listUnread',
+      'profile.listFollowers',
+      'stacks.discover',
     ])
   })
 
@@ -60,6 +63,9 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
     // profile.me / submitClaim: gated result.
     expect(auth('profile.me')).toEqual({ signedOut: 'result', onError: 'result' })
     expect(auth('profile.submitClaim')).toEqual({ signedOut: 'result', onError: 'result' })
+    // profile.listFollowers: a pure public read — never sends a Bearer, and an
+    // unknown handle throws (the handle IS the resource).
+    expect(auth('profile.listFollowers')).toEqual({ signedOut: 'anon', onError: 'throw' })
     // profile signed-in reads/mutations that throw on both axes.
     expect(auth('profile.myFavorites')).toEqual({ signedOut: 'throw', onError: 'throw' })
     expect(auth('profile.setNotificationPrefs')).toEqual({ signedOut: 'throw', onError: 'throw' })
@@ -74,6 +80,14 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
     expect(auth('ai.complete')).toEqual({ signedOut: 'throw', onError: 'throw' })
     // prompts.list — names-only read, gated-result on both axes.
     expect(auth('prompts.list')).toEqual({ signedOut: 'result', onError: 'result' })
+    // stacks.* writes: gated result, same as explore engagement writes.
+    expect(auth('stacks.rename')).toEqual({ signedOut: 'result', onError: 'result' })
+    // stacks.resolveShare + stacks.discover — the two public/anon-OK reads in
+    // this namespace, unlike every other stacks.* method (which all
+    // throw/gated-result as signed-in-only). Matches the explore-reads
+    // posture exactly.
+    expect(auth('stacks.resolveShare')).toEqual({ signedOut: 'optional', onError: 'throw' })
+    expect(auth('stacks.discover')).toEqual({ signedOut: 'optional', onError: 'throw' })
   })
 
   it('binds ai.* to the single-endpoint worker root via POST', () => {

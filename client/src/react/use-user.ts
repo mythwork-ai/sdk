@@ -1,5 +1,5 @@
 // @mythwork/sdk/react — per-app identity hook, a thin projection over
-// `useMythwork()`. Ported from @orbitcode/auth/react: same public shape
+// `useMythwork()`. Ported from @mythwork/auth/react: same public shape
 // ({ userId, kind, name?, picture?, signIn, signOut }), but the user + actions
 // come from the base MythworkProvider context rather than the kernel shim.
 //

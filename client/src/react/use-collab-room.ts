@@ -1,6 +1,6 @@
 // @mythwork/sdk/react — the per-(project, name) collab room hook. Owns the
 // local Y.Doc + Awareness + WebsocketProvider lifecycle so apps don't construct
-// any of those directly. Ported from @orbitcode/collab/react: the ONLY platform
+// any of those directly. Ported from @mythwork/collab/react: the ONLY platform
 // couplings that change are (1) room provisioning — `sdk.collab.openRoom()`
 // instead of the legacy `openRoom(project)` shim — and (2) where the pid/client
 // come from (`useProject()` + `useMythwork()` instead of `useProjectHandle()`).

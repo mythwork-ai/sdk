@@ -263,11 +263,19 @@ const MAKERS_NOTES: Record<string, string> = {
   app_dev_010: 'Sometimes the brief is "I don\'t know, surprise me." So I built exactly that.',
 }
 
+/** Seeded remix lineage: child projectId → parent {projectId, name}. Only
+ *  `app_dev_009` ("Remix Gallery") is seeded as a remix, of `app_dev_003`
+ *  ("Remix Forge") — every other seeded app is organic (`remixedFrom: null`). */
+const REMIXED_FROM: Record<string, { projectId: string; name: string }> = {
+  app_dev_009: { projectId: 'app_dev_003', name: 'Remix Forge' },
+}
+
 export function appSummaryToDetail(summary: AppSummary): AppDetail {
   return {
     ...summary,
     makersNote: MAKERS_NOTES[summary.projectId],
     remixCount: Math.max(1, Math.round(summary.rating.count / 3)),
+    remixedFrom: REMIXED_FROM[summary.projectId] ?? null,
   }
 }
 

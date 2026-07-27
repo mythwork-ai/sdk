@@ -164,6 +164,47 @@ describe('dev host — single-client project/fs/git', () => {
     const after = await sdk.git.log({ pid })
     expect(after.length).toBe(before + 1)
     expect(after[0]!.sha).toBe(restored) // newest commit is the restore
+    // The restored snapshot IS the new HEAD's tree — nothing pending.
+    expect((await sdk.git.hasUncommittedChanges({ pid })).dirty).toBe(false)
+  })
+
+  // Parity with the real host's content diff (orbit-kernel git/read.ts
+  // hasUncommittedChanges): dirtiness is work-tree-vs-HEAD by CONTENT, so a
+  // write that restores the committed bytes reads clean again — the dirty
+  // signal myth-ide's checkpoint scheduler and saveIfDirty guards key off.
+  it('hasUncommittedChanges: content diff vs HEAD, unborn-HEAD dirty iff files exist', async () => {
+    const { pid } = await sdk.project.create({})
+    const dirty = async () => (await sdk.git.hasUncommittedChanges({ pid })).dirty
+
+    // No commits, no files → clean; first write (HEAD still unborn) → dirty.
+    expect(await dirty()).toBe(false)
+    await sdk.fs.write({ pid, path: '/a.txt', bytes: enc.encode('v1') })
+    expect(await dirty()).toBe(true)
+
+    await sdk.git.commit({ pid, message: 'c1' })
+    expect(await dirty()).toBe(false)
+
+    // Modify → dirty; restore the exact committed bytes → clean again.
+    await sdk.fs.write({ pid, path: '/a.txt', bytes: enc.encode('v2') })
+    expect(await dirty()).toBe(true)
+    await sdk.fs.write({ pid, path: '/a.txt', bytes: enc.encode('v1') })
+    expect(await dirty()).toBe(false)
+
+    // Add an uncommitted file → dirty; delete it → clean.
+    await sdk.fs.write({ pid, path: '/b.txt', bytes: enc.encode('x') })
+    expect(await dirty()).toBe(true)
+    await sdk.fs.delete({ pid, path: '/b.txt' })
+    expect(await dirty()).toBe(false)
+
+    // Rename a committed file → dirty (path set differs from HEAD).
+    await sdk.fs.rename({ pid, from: '/a.txt', to: '/renamed.txt' })
+    expect(await dirty()).toBe(true)
+    await sdk.fs.rename({ pid, from: '/renamed.txt', to: '/a.txt' })
+    expect(await dirty()).toBe(false)
+
+    // Delete a committed file → dirty.
+    await sdk.fs.delete({ pid, path: '/a.txt' })
+    expect(await dirty()).toBe(true)
   })
 })
 

@@ -184,11 +184,17 @@ export interface AppSummary {
  * @experimental — API may still evolve before 1.0.
  *
  * The full app detail returned by `explore.getApp`: an {@link AppSummary} plus
- * the maker's note and the remix lineage count.
+ * the maker's note and the remix lineage (parent app + total remix count).
+ * `remixedFrom` is `null` for an organic app, and also `null` when the parent
+ * exists but isn't publicly visible (unknown/tombstoned/scan-gated) —
+ * existence-hiding applies to the parent exactly as it does to the subject
+ * app itself. See `explore.listRemixes` for the reverse direction (this app's
+ * own children).
  */
 export type AppDetail = AppSummary & {
   makersNote?: string
   remixCount: number
+  remixedFrom: { projectId: string; name: string } | null
 }
 
 /**
@@ -379,6 +385,69 @@ export type NotificationInboxItem =
  * `'new'` by `publishedAt`, `'trending'` by the 7d-vs-prev-7d trend.
  */
 export type AppSort = 'popular' | 'new' | 'trending'
+
+// ── stacks surface ───────────────────────────────────────────────────────────
+// @experimental — API may still evolve before 1.0.
+// Signed-in-scoped app collections, backing the `stacks.*` methods. Replaces
+// the frontend's localStorage-only stacksStore.ts (myth-fff PR #38 handoff
+// item 3). Timestamps are epoch milliseconds as `number`, same convention as
+// the explore surface.
+
+/**
+ * @experimental — API may still evolve before 1.0.
+ *
+ * `'default'` — one of the always-visible starter categories.
+ * `'revealed'` — spawned on first save into a non-default category, or by
+ * `stacks.splitOutCategory` splitting a folded category out of a default.
+ * `'custom'` — user-created via `stacks.create`.
+ */
+export type StackKind = 'default' | 'revealed' | 'custom'
+
+/**
+ * @experimental — API may still evolve before 1.0.
+ *
+ * `'public'` (the default) surfaces the stack in `stacks.discover` and lets
+ * anyone resolve it via `stacks.resolveShare`. `'private'` excludes it from
+ * discovery AND makes `resolveShare` refuse anyone but the owner — a stack's
+ * own `stackId` is its share link, so this is the only access gate (no
+ * separate token to rotate/revoke).
+ */
+export type StackVisibility = 'public' | 'private'
+
+/**
+ * @experimental — API may still evolve before 1.0.
+ *
+ * One stack as returned by `stacks.list`/`stacks.create`/
+ * `stacks.splitOutCategory`/`stacks.discover`. `foldedCategoryIds` is an
+ * opaque, frontend-owned routing hint (which categories are currently
+ * folded into this stack, and so auto-file a save into it) — the backend
+ * stores it verbatim and never interprets it; the 24-item category taxonomy
+ * itself isn't a backend concept. `projectIds` is the stack's current
+ * membership, unpaged (a bounded personal collection, not a discovery-scale
+ * list). `stackId` itself is the stack's share link — see `StackVisibility`.
+ */
+export interface StackSummary {
+  stackId: string
+  name: string
+  kind: StackKind
+  foldedCategoryIds: string[]
+  visibility: StackVisibility
+  projectIds: string[]
+}
+
+/**
+ * @experimental — API may still evolve before 1.0.
+ *
+ * The public, resolved contents of a shared stack, as returned by
+ * `stacks.resolveShare`. `items` only includes apps that are STILL
+ * currently visible (published, non-tombstoned, scan-gate-passing) — an app
+ * removed since the stack was shared silently drops out.
+ */
+export interface SharedStack {
+  stackId: string
+  name: string
+  items: AppSummary[]
+}
 
 // ── ai.* (mythwork-ai proxy, OpenAI-compatible wire) ─────────────────────────
 // @experimental — API may still evolve before 1.0. These mirror the

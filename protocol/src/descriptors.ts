@@ -83,10 +83,11 @@ export interface MethodDescriptor {
 }
 
 /**
- * @experimental The descriptor table. Covers the explore namespace (all 16
- * methods), the profile namespace methods, and the `ai.*` namespace (which
- * binds to the separate `mythwork-ai` worker, not the api worker). Host-local
- * namespaces never appear here.
+ * @experimental The descriptor table. Covers the explore namespace (all 17
+ * methods), the stacks namespace (all 9 methods), the profile namespace
+ * methods, and the `ai.*` namespace (which binds to the separate
+ * `mythwork-ai` worker, not the api worker). Host-local namespaces never
+ * appear here.
  */
 export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescriptor>> = {
   // ── explore.* ────────────────────────────────────────────────────────────
@@ -109,6 +110,11 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
   'explore.relatedApps': {
     http: { verb: 'GET', path: '/explore/apps/:projectId/related' },
     auth: { signedOut: 'optional', onError: 'throw' },
+  },
+  'explore.listRemixes': {
+    http: { verb: 'GET', path: '/explore/apps/:projectId/remixes' },
+    auth: { signedOut: 'optional', onError: 'throw' },
+    paginated: true,
   },
   'explore.trendingApps': {
     http: { verb: 'GET', path: '/explore/trending' },
@@ -200,6 +206,51 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     auth: { signedOut: 'result', onError: 'result' },
   },
 
+  // ── stacks.* ─────────────────────────────────────────────────────────────
+  // Every write and the owner-scoped read (list) require a session — stacks
+  // are managed signed-in-only. The one read (list) throws on both axes
+  // (private data, mirrors profile.myFavorites); every write is gated-result
+  // on both axes (mirrors explore.rate/addComment). `resolveShare` and
+  // `discover` are the two anonymous-OK reads (matches the explore-reads
+  // posture).
+  'stacks.list': {
+    http: { verb: 'GET', path: '/stacks' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'stacks.create': {
+    http: { verb: 'POST', path: '/stacks' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  'stacks.rename': {
+    http: { verb: 'PATCH', path: '/stacks/:stackId' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  'stacks.delete': {
+    http: { verb: 'DELETE', path: '/stacks/:stackId' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  'stacks.addApp': {
+    http: { verb: 'POST', path: '/stacks/:stackId/items' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  'stacks.removeApp': {
+    http: { verb: 'DELETE', path: '/stacks/:stackId/items/:projectId' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  'stacks.splitOutCategory': {
+    http: { verb: 'POST', path: '/stacks/:hostStackId/split-category' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
+  'stacks.resolveShare': {
+    http: { verb: 'GET', path: '/stacks/:stackId/shared' },
+    auth: { signedOut: 'optional', onError: 'throw' },
+  },
+  'stacks.discover': {
+    http: { verb: 'GET', path: '/stacks/discover' },
+    auth: { signedOut: 'optional', onError: 'throw' },
+    paginated: true,
+  },
+
   // ── profile.* ────────────────────────────────────────────────────────────
   // submitClaim + me: no-token → { ok:false } ZERO network, a stale 401 + a 4xx
   // map to { ok:false, reason } → signedOut: 'result', onError: 'result'.
@@ -223,6 +274,15 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
   'profile.myFavorites': {
     http: { verb: 'GET', path: '/profile/me/favorites' },
     auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  // listFollowers: a pure public read (no viewer-specific enrichment at all,
+  // unlike profile.get's optional-Bearer isOwner) → signedOut: 'anon' (never
+  // send a Bearer); a 404 unknown-handle THROWS (the handle IS the resource,
+  // not a degradable filter) → onError: 'throw'. Paginated like listApps.
+  'profile.listFollowers': {
+    http: { verb: 'GET', path: '/profile/:handle/followers' },
+    auth: { signedOut: 'anon', onError: 'throw' },
+    paginated: true,
   },
   'profile.getNotificationPrefs': {
     http: { verb: 'GET', path: '/profile/me/notification-prefs' },

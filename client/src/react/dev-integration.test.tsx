@@ -3,7 +3,7 @@
 // Full-stack dev test: two `connect({ dev: true })` clients on ONE shared dev
 // project, driven through the real React hooks. Proves the whole loop — dev host
 // (project/fs/git/collab.openRoom) + installDevCollabRelay + useCollabRoom +
-// useGit — converges with NO real host and NO @orbitcode/* dependency. This is
+// useGit — converges with NO real host and NO @mythwork/* dependency. This is
 // the harness an editor app (tennis) runs its multiplayer tests on.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
