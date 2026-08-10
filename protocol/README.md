@@ -109,6 +109,7 @@ without authentication. "Auth-gated" means the host requires a signed-in session
 | `project.getDescription` | `{ pid: string }` | `{ description: string \| null }` | Cached top-level package.json `description`; `null` when unset or config not yet on disk |
 | `project.setDescription` | `{ pid: string; description: string }` | `Ok` | Sets the top-level package.json `description` (empty string clears it); indexed for search on next publish |
 | `project.setPublicCollab` | `{ pid: string; enabled: boolean }` | `{ projectId: string; publicCollab: boolean }` | Auth-gated; local-only/anonymous project rejects |
+| `project.remix` | `{ projectId: string }` | `ProjectInfo` | **Signed-in;** fork via CAS ref-copy of the source app's PUBLISHED tree (never its live editing head) into a fresh, parentless-commit project; result is the caller's new local handle (`{ pid, role }`). Backing: blob/CAS + projects D1 |
 
 ### fs.* — file operations
 
@@ -265,11 +266,10 @@ the `type` field.
 
 > **`@experimental` — kept separate from the original deployed-v1 catalog above
 > on purpose.** The methods and types in this section back the explore /
-> engagement backend. The one exception is **`project.remix`**, which still has
-> **no bridge** and is **not yet served**. The v1 catalog above documents the
-> original surface (**52 methods**, **8 events**); this section adds **+31
-> methods** and the data types they use. Everything here stays `@experimental`
-> — the API surface may still evolve before 1.0.
+> engagement backend. The v1 catalog above documents the original surface
+> (**52 methods**, **8 events**); this section adds **+31 methods** and the
+> data types they use. Everything here stays `@experimental` — the API
+> surface may still evolve before 1.0.
 
 Conventions for this surface:
 
@@ -331,16 +331,6 @@ Signed-in-scoped app collections, replacing the frontend's localStorage-only `st
 | `profile.getNotificationPrefs` | `{}` | `NotificationPrefs` | **Signed-in.** Backing: notification_prefs D1 |
 | `profile.setNotificationPrefs` | `Partial<NotificationPrefs>` | `NotificationPrefs` | **Signed-in;** returns the full updated prefs. Backing: notification_prefs D1 |
 | `profile.submitClaim` | `{ name: string; email: string; handle: string; acceptedTerms: true; survey?: Record<string, unknown> }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result).** One authed call: lead fields + the real platform handle (different handle = atomic rename; handle claim runs before the lead upsert, retry-safe); `survey` is an opaque app blob. Backing: claims + profiles D1 |
-
-#### project.* (1 addition — draft, not yet served)
-
-> **`project.remix` has no host bridge yet** — it is the one method in this
-> section that no deployed host serves. Calling it against a current host
-> rejects. It stays in the contract so apps can compile against it today.
-
-| Wire method | Params | Result | Notes |
-|---|---|---|---|
-| `project.remix` | `{ projectId: string }` | `ProjectInfo` | **Draft — not yet served (no bridge).** **Signed-in;** fork via CAS ref-copy of the source head tree; result is the caller's new local handle (`{ pid, role }`). Backing: blob/CAS + projects D1 |
 
 > No new events. Live counters (`explore.statsChanged`, `explore.commentAdded`)
 > are possible future pushes; v1 polls.

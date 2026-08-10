@@ -20,6 +20,12 @@
 //     throw); on success records the claimed handle so profile.me resolves to a
 //     full profile. (No consent dialog exists in the dev host, so there's no
 //     'denied' path.)
+//   - project.remix: signed-out THROWS (mirrors the real bridge's "sign in
+//     first"), unknown source projectId THROWS. On success, copies the source
+//     DevProject's files/commits/snapshots into a freshly-minted dev pid — the
+//     in-memory store makes this a genuinely faithful stand-in (a real
+//     fs.list/fs.read/fs.log against the fork returns the source's actual
+//     content), unlike the real bridge's server round-trip.
 //   - profile.me: gated-RESULT — signed-out → { ok:false, reason:'sign_in_required' };
 //     signed-in with no handle → { ok:false, reason:'no_profile' };
 //     signed-in with handle (the seeded dev user, or a claimed handle) → full
@@ -848,6 +854,7 @@ const handlers: Record<string, Handler> = {
       state.user = {
         kind: 'public',
         userId: 'newcomer',
+        email: 'newcomer@dev.myth.work',
         displayName: 'New Maker',
         picture: '',
         profileUrl: '',
@@ -867,6 +874,7 @@ const handlers: Record<string, Handler> = {
     state.user = {
       kind: 'public',
       userId: maker.handle,
+      email: `${maker.handle}@dev.myth.work`,
       displayName: maker.displayName,
       picture: '',
       profileUrl: `https://myth.work/@${maker.handle}`,
@@ -965,6 +973,29 @@ const handlers: Record<string, Handler> = {
       project.leader === null || project.leader === ctx.hostPort ? 'leader' : 'follower'
     if (project.leader === null) project.leader = ctx.hostPort
     return { pid, role } satisfies ProjectInfo
+  },
+
+  'project.remix'(args, state, ctx) {
+    // Matches the real bridge's posture: signed-out is a clear throw, not a
+    // gated-result — the fork must exist before there is anywhere to open.
+    if (state.user.kind === 'anonymous') throw new Error('project.remix: sign in first')
+    const sourceProjectId = args['projectId'] as string
+    const source = projects.get(sourceProjectId)
+    if (!source) throw new Error(`project.remix: unknown project ${sourceProjectId}`)
+
+    const pid = `dev${String(pidSeq++).padStart(14, '0')}`
+    const fork = ensureProject(pid)
+    fork.name = source.name
+    fork.description = source.description
+    // Fresh Maps/arrays: the fork owns independent state from here on, matching
+    // the real fork's CAS ref-copy (a new project, not a shared one) — a later
+    // write to either project must never be visible in the other.
+    fork.files = new Map(source.files)
+    fork.commits = [...source.commits]
+    fork.snapshots = new Map(source.snapshots)
+    fork.leader = ctx.hostPort
+    fork.subscribers.add(ctx.hostPort)
+    return { pid, role: 'leader' } satisfies ProjectInfo
   },
 
   'project.close'(args, _state, ctx) {

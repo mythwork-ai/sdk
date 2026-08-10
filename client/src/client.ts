@@ -138,10 +138,10 @@ export class MythworkClient {
     publish: (params: MethodParams<'publish.run'>, opts?: RequestOptions) =>
       this.request('publish.run', params, opts),
     /**
-     * @experimental Draft surface — not yet served by deployed hosts (explore
-     * backend in progress). Fork the app at the source `projectId` (CAS
-     * ref-copy of the head tree); resolves the caller's new local handle.
-     * Signed-in. Wire: `project.remix`.
+     * Fork the app at the source `projectId` — a CAS ref-copy of its PUBLISHED
+     * tree (never the source's live editing head) into a fresh,
+     * parentless-commit project the caller owns; resolves the caller's new
+     * local handle. Signed-in. Wire: `project.remix`.
      */
     remix: (params: MethodParams<'project.remix'>, opts?: RequestOptions) =>
       this.request('project.remix', params, opts),

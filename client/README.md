@@ -256,7 +256,7 @@ strings internally. Legacy strings are never exposed to application code.
 
 | Client namespace | Wire methods / events covered |
 |---|---|
-| `sdk.project` | `project.*`, `publish.run` (as `sdk.project.publish`) |
+| `sdk.project` | `project.*` (incl. `project.remix`), `publish.run` (as `sdk.project.publish`) |
 | `sdk.fs` | `fs.read`, `fs.write`, `fs.list`, `fs.exists`, `fs.rename`, `fs.delete`; event `fs.changed` |
 | `sdk.git` | `fs.commit`, `fs.log`, `fs.showVersion`, `fs.diff`, `fs.checkout`, `fs.head`, `fs.hasUncommittedChanges`, `fs.commitTree`, `fs.deleteCommit`, `fs.editCommitMessage`, `fs.flushDirty` |
 | `sdk.collab` | `collab.openRoom` |
@@ -266,17 +266,13 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.secrets` | `secrets.check`, `secrets.proxyFetch` |
 | `sdk.config` | `config.get` |
 | `sdk.event` | `event.sendBatch` |
-| `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite` |
-| `sdk.profile` (additional methods) | `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs` — `@experimental` |
+| `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite`, `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs` |
 | `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.myApps`, `explore.comments`, `explore.addComment` — `@experimental` |
-| `sdk.project` (**draft**) | `project.remix` (as `sdk.project.remix`) — `@experimental`, **not yet served** |
 
-The `sdk.explore` namespace (15 methods) and the `sdk.profile.*` additions are
-`@experimental` — present so apps can compile today, and the surface may still
-evolve before 1.0. The lone exception is **`sdk.project.remix`**, which still
-has **no bridge** and is **not yet served** (calling it against any current host
-rejects). See "Explore surface" in `@mythwork/protocol`'s README for the full
-method/type tables.
+The `sdk.explore` namespace (15 methods) is `@experimental` — the surface may
+still evolve before 1.0. See "Explore surface" in `@mythwork/protocol`'s
+README for the full method/type tables, including per-method maturity within
+`sdk.profile`.
 
 Note: `project.getName` (singular) exists in `@mythwork/protocol`'s `MethodMap`
 but is not exposed as a helper — use `sdk.project.getNames` (the batch variant)

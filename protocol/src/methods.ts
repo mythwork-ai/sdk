@@ -104,7 +104,9 @@ export type GatedResult = { ok: false; reason: AgentGatedReason }
  * optional; the host resolves defaults server-side.
  *
  * - `persona`: named persona preset (resolved server-side, never bundled).
- * - `variant`: variant of the persona (e.g. `'concise'`, `'creative'`).
+ * - `variant`: variant of the persona (e.g. `'concise'`, `'creative'`). `'design'`
+ *   is host-selected from the user's Fast/Design choice and is IGNORED here — an
+ *   app cannot opt itself into the expensive design prompt.
  * - `model`: override the default LLM model.
  * - `toolset`: named toolset restricts which tools the agent may call.
  * - `instructions`: bounded inline instruction appended last (≤2 KB).
@@ -117,6 +119,19 @@ export interface AgentSessionOptions {
   toolset?: string
   instructions?: string
   tools?: unknown[]
+  // NOTE: there is deliberately NO `designUpgrade` here, and it must not come back.
+  // It was added as a per-session force and that was a hole: `agent.*` is reachable
+  // from the sandboxed app iframe (router.ts routes the prefix and passes
+  // `envelope.args` through), the app is MODEL-AUTHORED code, and the field sat at
+  // rank 1 of the resolution order — so a generated app could pin the gate on with
+  // `agent.create({ designUpgrade: true })`, outranking the user's own choice. It
+  // was also a small credit-amplification vector, since the gate spends extra
+  // model rounds against the signed-in user's balance.
+  //
+  // The two legitimate producers are both host-side and stay there: the dev hosts set
+  // `HostFrameConfig.designUpgrade` (a trusted host config, not an app param) which
+  // becomes the host DEFAULT, and tests pass the internal `explicit` argument to
+  // resolveDesignUpgradeDecision directly.
 }
 
 /**
@@ -246,6 +261,16 @@ export interface MethodMap {
     params: { pid: string; enabled: boolean }
     result: { projectId: string; publicCollab: boolean }
   }
+  /**
+   * Fork the app at the source canonical `projectId`: a CAS ref-copy of that
+   * app's PUBLISHED tree closure (refcount bump, zero data copy) into a fresh
+   * project the caller owns, born at a synthesized PARENTLESS commit over that
+   * tree — not the source's live editing head or its commit history, which
+   * may hold unpublished work and would otherwise make retention unbounded.
+   * Signed-in. Returns the caller's new local project handle ({@link
+   * ProjectInfo}: `{ pid, role }`).
+   */
+  'project.remix': { params: { projectId: string }; result: ProjectInfo }
 
   // ── fs.* file ops ───────────────────────────────────────────────────────
 
@@ -434,6 +459,96 @@ export interface MethodMap {
   'profile.setFavorite': {
     params: { targetKind: 'creator' | 'app'; targetId: string }
     result: { ok: false; reason: string } | { ok: true; favorited: boolean; count: number }
+  }
+
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * The signed-in viewer's OWN profile, resolved server-side from the session.
+   * Same open shape as `profile.get` plus the editable fields `profile.update`
+   * writes (`displayName`, `bio`, `location`, `link`), so a settings screen
+   * reads exactly what it writes; `handle` and `isOwner: true` are the
+   * guaranteed keys. Posture: gated-result — signed-out resolves
+   * `{ ok: false, reason: 'sign_in_required' }` with ZERO network; a signed-in
+   * viewer who never claimed a handle resolves
+   * `{ ok: false, reason: 'no_profile' }` (render the claim-first affordance).
+   * Discriminate on `'reason' in result`. Backing: profiles D1.
+   */
+  'profile.me': {
+    params: Record<string, never>
+    result:
+      | { ok: false; reason: string }
+      | (Record<string, unknown> & { handle: string; isOwner: true })
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * The viewer's favorites/follows, optionally filtered by `targetKind`. Reads
+   * the same edge table `profile.setFavorite` writes (covers both favorites and
+   * follows). Signed-in. Backing: favorites D1.
+   */
+  'profile.myFavorites': {
+    params: { targetKind?: 'creator' | 'app' }
+    result: { items: FavoriteEdge[] }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Followers of a creator by `handle` — the REVERSE of `profile.myFavorites`/
+   * `profile.setFavorite`'s follow edge: not "who the viewer follows" but "who
+   * follows this creator". Public read (no auth), keyset-paginated newest-first
+   * via `{ cursor? }` → `{ items, nextCursor? }` (the same convention
+   * `explore.listApps` uses). An unknown `handle` throws (the resource itself
+   * is unresolved, unlike a filter param that legitimately degrades to an
+   * empty page). Backing: favorites D1 (`idx_favorites_target`).
+   */
+  'profile.listFollowers': {
+    params: { handle: string; cursor?: string }
+    result: { items: MakerRef[]; nextCursor?: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Update the viewer's structured profile fields. Signed-in (signed-out
+   * THROWS, consistent with the deployed `profile.*` mutations — unlike the
+   * `explore.*` writes' result-value posture). The server owns `link`
+   * normalization. Validation/permission failures arrive as
+   * `{ ok: false, reason }` — including `'no_profile'` when the signed-in
+   * viewer hasn't claimed a handle yet (render a claim-first affordance); the
+   * success branch is intentionally open (the underlying server JSON is not
+   * strongly typed at the wire boundary). Backing: profiles columns.
+   */
+  'profile.update': {
+    params: {
+      displayName?: string
+      bio?: string
+      location?: string
+      link?: string
+      /** Cross-app display theme (migration 0015). Persisted on the profile and
+       *  surfaced via profile.me().theme so every platform app honors it. */
+      theme?: 'system' | 'light' | 'dark'
+    }
+    result: ProfileMutationResult
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Read the viewer's notification preferences. Signed-in.
+   * Backing: notification_prefs D1.
+   */
+  'profile.getNotificationPrefs': {
+    params: Record<string, never>
+    result: NotificationPrefs
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Update some notification preferences; returns the full updated prefs.
+   * Signed-in. Backing: notification_prefs D1.
+   */
+  'profile.setNotificationPrefs': {
+    params: Partial<NotificationPrefs>
+    result: NotificationPrefs
   }
 
   // ── publish.* ───────────────────────────────────────────────────────────
@@ -951,100 +1066,6 @@ export interface MethodMap {
     result: { items: StackSummary[]; nextCursor?: string }
   }
 
-  // ── profile.* (additions) ───────────────────────────────────────────────
-  // @experimental — API may still evolve before 1.0. These extend the
-  // deployed `profile.*` namespace above.
-
-  /**
-   * @experimental — API may still evolve before 1.0.
-   *
-   * The signed-in viewer's OWN profile, resolved server-side from the session.
-   * Same open shape as `profile.get` plus the editable fields `profile.update`
-   * writes (`displayName`, `bio`, `location`, `link`), so a settings screen
-   * reads exactly what it writes; `handle` and `isOwner: true` are the
-   * guaranteed keys. Posture: gated-result — signed-out resolves
-   * `{ ok: false, reason: 'sign_in_required' }` with ZERO network; a signed-in
-   * viewer who never claimed a handle resolves
-   * `{ ok: false, reason: 'no_profile' }` (render the claim-first affordance).
-   * Discriminate on `'reason' in result`. Backing: profiles D1.
-   */
-  'profile.me': {
-    params: Record<string, never>
-    result:
-      | { ok: false; reason: string }
-      | (Record<string, unknown> & { handle: string; isOwner: true })
-  }
-  /**
-   * @experimental — API may still evolve before 1.0.
-   *
-   * The viewer's favorites/follows, optionally filtered by `targetKind`. Reads
-   * the same edge table `profile.setFavorite` writes (covers both favorites and
-   * follows). Signed-in. Backing: favorites D1.
-   */
-  'profile.myFavorites': {
-    params: { targetKind?: 'creator' | 'app' }
-    result: { items: FavoriteEdge[] }
-  }
-  /**
-   * @experimental — API may still evolve before 1.0.
-   *
-   * Followers of a creator by `handle` — the REVERSE of `profile.myFavorites`/
-   * `profile.setFavorite`'s follow edge: not "who the viewer follows" but "who
-   * follows this creator". Public read (no auth), keyset-paginated newest-first
-   * via `{ cursor? }` → `{ items, nextCursor? }` (the same convention
-   * `explore.listApps` uses). An unknown `handle` throws (the resource itself
-   * is unresolved, unlike a filter param that legitimately degrades to an
-   * empty page). Backing: favorites D1 (`idx_favorites_target`).
-   */
-  'profile.listFollowers': {
-    params: { handle: string; cursor?: string }
-    result: { items: MakerRef[]; nextCursor?: string }
-  }
-  /**
-   * @experimental — API may still evolve before 1.0.
-   *
-   * Update the viewer's structured profile fields. Signed-in (signed-out
-   * THROWS, consistent with the deployed `profile.*` mutations — unlike the
-   * `explore.*` writes' result-value posture). The server owns `link`
-   * normalization. Validation/permission failures arrive as
-   * `{ ok: false, reason }` — including `'no_profile'` when the signed-in
-   * viewer hasn't claimed a handle yet (render a claim-first affordance); the
-   * success branch is intentionally open (the underlying server JSON is not
-   * strongly typed at the wire boundary). Backing: profiles columns.
-   */
-  'profile.update': {
-    params: {
-      displayName?: string
-      bio?: string
-      location?: string
-      link?: string
-      /** Cross-app display theme (migration 0015). Persisted on the profile and
-       *  surfaced via profile.me().theme so every platform app honors it. */
-      theme?: 'system' | 'light' | 'dark'
-    }
-    result: ProfileMutationResult
-  }
-  /**
-   * @experimental — API may still evolve before 1.0.
-   *
-   * Read the viewer's notification preferences. Signed-in.
-   * Backing: notification_prefs D1.
-   */
-  'profile.getNotificationPrefs': {
-    params: Record<string, never>
-    result: NotificationPrefs
-  }
-  /**
-   * @experimental — API may still evolve before 1.0.
-   *
-   * Update some notification preferences; returns the full updated prefs.
-   * Signed-in. Backing: notification_prefs D1.
-   */
-  'profile.setNotificationPrefs': {
-    params: Partial<NotificationPrefs>
-    result: NotificationPrefs
-  }
-
   // ── notifications.* ──────────────────────────────────────────────────────
   /**
    * @experimental — API may still evolve before 1.0.
@@ -1126,21 +1147,6 @@ export interface MethodMap {
   /** Record that an approved user accepted their invite. Best-effort + idempotent;
    *  identity comes from the session. Returns the updated access block. */
   'profile.acceptInvite': { params: Record<string, never>; result: UserAccess }
-
-  // ── project.* (draft addition — explore backend, no bridge yet) ─────────
-  // @experimental Draft surface — not yet served by deployed hosts (explore
-  // backend in progress). Extends the deployed `project.*` namespace above.
-
-  /**
-   * @experimental Draft surface — not yet served by deployed hosts (explore
-   * backend in progress).
-   *
-   * Fork the app at the source canonical `projectId`: a CAS ref-copy of the
-   * source head tree (refcount bump, zero data copy). Signed-in. Returns the
-   * caller's new local project handle ({@link ProjectInfo}: `{ pid, role }`).
-   * Backing: blob/CAS + projects D1.
-   */
-  'project.remix': { params: { projectId: string }; result: ProjectInfo }
 
   // ── prompts.* ─────────────────────────────────────────────────────────────
   // Server-stored system-prompt presets (AI-SDK Layer 1). Authoring is

@@ -208,6 +208,53 @@ describe('dev host — single-client project/fs/git', () => {
   })
 })
 
+describe('dev host — project.remix', () => {
+  let sdk: MythworkClient
+  beforeEach(() => {
+    sdk = new MythworkClient(createDevHost())
+  })
+  afterEach(() => sdk.port.close())
+
+  it('copies the source project into a new pid the caller lands on with a leader role', async () => {
+    await sdk.auth.signIn()
+    const { pid: sourcePid } = await sdk.project.create({ projectName: 'Sprout' })
+    await sdk.fs.write({ pid: sourcePid, path: '/index.html', bytes: enc.encode('<h1>v1</h1>') })
+
+    const { pid: forkPid, role } = await sdk.project.remix({ projectId: sourcePid })
+
+    expect(forkPid).not.toBe(sourcePid)
+    expect(role).toBe('leader')
+    // The whole point: the fork actually has the source's code, not an empty
+    // project the caller then has to rebuild.
+    expect(dec.decode(await sdk.fs.read({ pid: forkPid, path: '/index.html' }))).toBe('<h1>v1</h1>')
+  })
+
+  it('a later write to the source does not leak into the fork, or vice versa', async () => {
+    await sdk.auth.signIn()
+    const { pid: sourcePid } = await sdk.project.create({})
+    await sdk.fs.write({ pid: sourcePid, path: '/a.txt', bytes: enc.encode('source') })
+    const { pid: forkPid } = await sdk.project.remix({ projectId: sourcePid })
+
+    await sdk.fs.write({ pid: sourcePid, path: '/a.txt', bytes: enc.encode('source-edited') })
+    await sdk.fs.write({ pid: forkPid, path: '/a.txt', bytes: enc.encode('fork-edited') })
+
+    expect(dec.decode(await sdk.fs.read({ pid: sourcePid, path: '/a.txt' }))).toBe('source-edited')
+    expect(dec.decode(await sdk.fs.read({ pid: forkPid, path: '/a.txt' }))).toBe('fork-edited')
+  })
+
+  it('throws when signed out — a fork needs an owner, unlike project.create', async () => {
+    const { pid: sourcePid } = await sdk.project.create({})
+    await expect(sdk.project.remix({ projectId: sourcePid })).rejects.toThrow('sign in first')
+  })
+
+  it('throws for an unknown source projectId', async () => {
+    await sdk.auth.signIn()
+    await expect(sdk.project.remix({ projectId: 'nonexistent' })).rejects.toThrow(
+      'unknown project nonexistent',
+    )
+  })
+})
+
 describe('dev host — two clients share one project', () => {
   it('follower sees leader commits + receives cross-client fs.changed', async () => {
     const a = new MythworkClient(createDevHost())

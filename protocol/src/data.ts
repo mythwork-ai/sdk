@@ -28,6 +28,18 @@ export type User =
   | {
       kind: 'public'
       userId: string
+      /** The signed-in account's normalized email — present ONLY for
+       *  first-party apps (the serve worker's FIRST_PARTY_PROJECT_IDS
+       *  allowlist), so it is optional and consumers must handle its
+       *  absence.
+       *
+       *  Deliberately NOT sent to ordinary published apps: `getUser`
+       *  answers every app running in the host frame, the per-app identity
+       *  dialog (public / pseudonym / anonymous) is still deferred, and
+       *  nothing in the current consent flow tells a user that opening an
+       *  app discloses their email address. displayName + picture are the
+       *  profile they agreed to show; the email is not. */
+      email?: string
       displayName: string
       picture: string
       profileUrl: string
@@ -172,6 +184,10 @@ export interface AppSummary {
   publishedAt: number
   theme?: string
   badge?: string
+  /** Intrinsic, maker-set (or editorially-curated) app classification — a real,
+   *  persisted property (migration 0025), not a client-side heuristic. Absent
+   *  when the app has never expressed one. */
+  category?: 'utility' | 'born-shared' | 'delight'
   editorsChoice: boolean
   rating: { average: number; count: number }
   /** 7d-vs-prev-7d launch trend percentage; absent when not computed. */
