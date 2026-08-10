@@ -905,12 +905,16 @@ export class MythworkClient {
    * top-level back/forward — neither direction reloads the iframe.
    */
   readonly nav = {
-    /** Host-mediated top-level browser navigation. First-party apps only —
-     *  throws for other callers. Wire: `nav.topLevel`. */
+    /** Host-mediated top-level browser navigation. Requires the `top_level_nav`
+     *  grant — throws for other callers. Wire: `nav.topLevel`. */
     topLevel: (
       params: MethodParams<'nav.topLevel'> = { target: 'explore' },
       opts?: RequestOptions,
     ) => this.request('nav.topLevel', params, opts),
+    /** Ask the host to open an https link in a new tab. Resolves `{ ok: true }`
+     *  whether or not the host actually opened it. Wire: `nav.openExternal`. */
+    openExternal: (params: MethodParams<'nav.openExternal'>, opts?: RequestOptions) =>
+      this.request('nav.openExternal', params, opts),
     /** Report the app's current in-app path. Wire: `nav.reportLocation`. */
     reportLocation: (params: MethodParams<'nav.reportLocation'>, opts?: RequestOptions) =>
       this.request('nav.reportLocation', params, opts),

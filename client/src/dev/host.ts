@@ -34,17 +34,15 @@
 //     kernel.signIn adopts a NON-seed-maker identity so profile.me reports
 //     no_profile until profile.claimHandle records a handle — exercises the
 //     explore onboarding flow in dev.
-//   - firstParty mode (createDevHost({ firstParty }) / connect({ dev: { firstParty }})):
-//     simulates an allowlisted/first-party app — anonymous ai.chat/ai.complete
-//     RESOLVE (to a devCompletion echo) instead of throwing 'sign in required',
-//     mirroring the production first-party token. Symmetric opt-out to the
-//     default non-allowlisted throw. Also gates nav.topLevel (first-party apps
-//     only, mirroring isFirstPartyApp() in the real host-iframe bridge).
-//     Scoped to ai.*/nav.* ONLY: profile writes still throw when signed out,
-//     faithful to production (the token authorizes ai.*/nav.*, nothing else).
+//   - capabilities (createDevHost({ capabilities }) / connect({ dev: { capabilities }})):
+//     simulates the per-app grants of project_app_config (migration 0026),
+//     defaulting to all-deny like an unconfigured production app. See
+//     DevCapabilities. Grants are scoped exactly like production: profile
+//     writes still throw when signed out regardless of any grant.
 //   - kernel.signIn/signOut: respond then emit kernel.authChanged push.
 //   - Unknown method: { id, error: 'Unknown method: <m>' } (never hangs).
 
+import { classifyOutboundHost, isLocalOutbound } from '@mythwork/protocol'
 import type { AgentEvent, PushMessage, RpcRequest, RpcResponse, User } from '@mythwork/protocol'
 import type {
   AppDetail,
@@ -132,15 +130,11 @@ interface DevState {
    */
   noProfile: boolean
   /**
-   * Simulate a first-party / allowlisted app: anonymous `ai.chat`/`ai.complete`
-   * resolve instead of throwing `'sign in required'` — mirroring production,
-   * where the serve worker mints a first-party token so an allowlisted app's
-   * anonymous visitors reach `ai.*` (e.g. myth-landing's signed-out hero
-   * planner). Default (false) keeps the non-allowlisted "sign in required"
-   * throw. NOTE: first-party only authorizes `ai.*`; profile writes still
-   * require a real user session, so those handlers are unaffected.
+   * The per-app grants of migration 0026 (project_app_config), defaulting to
+   * all-deny exactly like an unconfigured production app. See
+   * {@link DevCapabilities} for what each flag simulates.
    */
-  firstParty: boolean
+  capabilities: DevCapabilities
   /** The handle recorded by profile.claimHandle (undefined until claimed). */
   claimedHandle: string | undefined
   /** Active agent sessions keyed by sessionId. */
@@ -149,8 +143,53 @@ interface DevState {
   agentSessionCounter: number
 }
 
+/**
+ * Mirrors production's per-app capability grants (project_app_config,
+ * migration 0026) so an app developer can exercise each granted behavior
+ * locally:
+ *   - `platformPaidAi` — anonymous `ai.chat`/`ai.complete` resolve instead of
+ *     throwing 'sign in required' (production mints a first-party token).
+ *     Authorizes `ai.*` ONLY; profile writes still need a real session.
+ *   - `topLevelNav` — `nav.topLevel` resolves instead of throwing.
+ *   - `skipProfileConsent` — consent-gated profile mutations skip the confirm
+ *     prompt (production skips its host-rendered consent dialog).
+ *   - `hidePlatformBadge` — accepted for parity; the standalone dev host
+ *     renders no host chrome, so there is no badge to hide.
+ *   - `outboundLinks` — `'any'` opens every https destination;
+ *     `'allowlist'` (default) classifies against the shared
+ *     `@mythwork/protocol` host table: warn-level asks via `confirm`,
+ *     never-level refuses — the same split production's host dialog applies.
+ */
+export interface DevCapabilities {
+  platformPaidAi: boolean
+  topLevelNav: boolean
+  skipProfileConsent: boolean
+  hidePlatformBadge: boolean
+  outboundLinks: 'allowlist' | 'any'
+}
+
+const DENY_ALL_CAPABILITIES: DevCapabilities = {
+  platformPaidAi: false,
+  topLevelNav: false,
+  skipProfileConsent: false,
+  hidePlatformBadge: false,
+  outboundLinks: 'allowlist',
+}
+
+/**
+ * Production consent is a host-frame dialog the app can't spoof; dev
+ * approximates it with `confirm`. Headless runs (vitest node env) have no
+ * window to ask through, so they proceed as consented — the denied path is
+ * exercised in browser dev or by stubbing `window.confirm`.
+ */
+function devConsent(state: DevState, prompt: string): boolean {
+  if (state.capabilities.skipProfileConsent) return true
+  if (typeof window === 'undefined') return true
+  return window.confirm(`[mythwork dev] ${prompt}`)
+}
+
 function freshState(
-  opts: { user?: User; noProfile?: boolean; firstParty?: boolean } = {},
+  opts: { user?: User; noProfile?: boolean; capabilities?: Partial<DevCapabilities> } = {},
 ): DevState {
   return {
     user: opts.user ?? { kind: 'anonymous', userId: 'anonymous' },
@@ -165,7 +204,7 @@ function freshState(
     profileFields: { bio: '', location: '', link: '' },
     appMetaOverrides: new Map(),
     noProfile: opts.noProfile ?? false,
-    firstParty: opts.firstParty ?? false,
+    capabilities: { ...DENY_ALL_CAPABILITIES, ...opts.capabilities },
     claimedHandle: undefined,
     agentSessions: new Map(),
     agentSessionCounter: 0,
@@ -660,11 +699,17 @@ const handlers: Record<string, Handler> = {
     }
   },
 
-  // Consent-gated in the real bridge; the dev host has NO consent dialog, so
-  // there is no 'denied' path here. Signed-out THROWS (mirrors the real
-  // bridge's no-token throw). On success, records the handle so profile.me
-  // resolves to the full profile shape — driving the explore onboarding flow.
+  // Consent-gated like the real bridge: without the skip_profile_consent
+  // grant a browser dev run asks via `confirm` (production renders its
+  // host-frame consent dialog) and a refusal returns the same
+  // { ok:false, reason:'denied' }. Headless runs (no window) have nothing to
+  // render and proceed. Signed-out THROWS (mirrors the real bridge's no-token
+  // throw). On success, records the handle so profile.me resolves to the full
+  // profile shape — driving the explore onboarding flow.
   'profile.claimHandle'(args, state) {
+    if (!devConsent(state, `Claim your profile handle as ${String(args['handle'] ?? '')}?`)) {
+      return { ok: false, reason: 'denied' }
+    }
     if (state.user.kind === 'anonymous') throw new Error('sign in required')
     const handle = String(args['handle'] ?? '')
       .trim()
@@ -904,16 +949,17 @@ const handlers: Record<string, Handler> = {
 
   // ── ai (mythwork-ai proxy) ───────────────────────────────────────────────────
   // Sign-in required (the worker 401s without a session) → anonymous THROWS, like
-  // the real bridge for a NON-allowlisted app. The `firstParty` opt-out
-  // (createDevHost({ firstParty }) / connect({ dev: { firstParty }})) simulates an
-  // allowlisted app: the serve worker mints a first-party token so anonymous
-  // callers reach ai.* — so in firstParty mode an anonymous caller proceeds to
+  // the real bridge for a NON-granted app. The `platformPaidAi` capability
+  // (createDevHost({ capabilities }) / connect({ dev: { capabilities }}))
+  // simulates a granted app: production mints a first-party token so anonymous
+  // callers reach ai.* — so with the grant an anonymous caller proceeds to
   // devCompletion just like a signed-in one (e.g. myth-landing's signed-out hero
   // planner). Returns a deterministic normalized OpenAI completion that echoes the
   // last user turn so an app's happy path renders without a network.
 
   'ai.chat'(args, state) {
-    if (!state.firstParty && state.user.kind === 'anonymous') throw new Error('sign in required')
+    if (!state.capabilities.platformPaidAi && state.user.kind === 'anonymous')
+      throw new Error('sign in required')
     const messages = (args['messages'] as { role?: string; content?: unknown }[]) ?? []
     const lastUser = [...messages].reverse().find(m => m.role === 'user')
     const echo = typeof lastUser?.content === 'string' ? lastUser.content : ''
@@ -922,7 +968,8 @@ const handlers: Record<string, Handler> = {
   },
 
   'ai.complete'(args, state) {
-    if (!state.firstParty && state.user.kind === 'anonymous') throw new Error('sign in required')
+    if (!state.capabilities.platformPaidAi && state.user.kind === 'anonymous')
+      throw new Error('sign in required')
     const prompt = typeof args['prompt'] === 'string' ? (args['prompt'] as string) : ''
     const preset = typeof args.systemPreset === 'string' ? ` [preset:${args.systemPreset}]` : ''
     return devCompletion(`(dev)${preset} ${prompt}`, args['model'] as string | undefined)
@@ -1181,15 +1228,46 @@ const handlers: Record<string, Handler> = {
   // ── nav ──────────────────────────────────────────────────────────────────────
 
   'nav.topLevel'(args, state) {
-    // Mirrors packages/host-iframe/src/bridges/nav.ts: first-party apps only,
-    // and only the closed `target` enum is accepted.
-    if (!state.firstParty) throw new Error('nav.topLevel: first-party apps only')
+    // Mirrors packages/host-iframe/src/bridges/nav.ts: requires the
+    // top_level_nav grant, and only the closed `target` enum is accepted.
+    if (!state.capabilities.topLevelNav) throw new Error('nav.topLevel: not granted for this app')
     const target = String(args['target'] ?? 'explore')
     if (target !== 'explore') throw new Error(`nav.topLevel: unknown target '${target}'`)
     // Unlike production, do NOT assign window.location.href here: there's no
     // real explore.{zone} to navigate to during local dev (redirecting off
     // localhost would break the dev loop), and jsdom-based tests would throw
     // "Not implemented: navigation" if we tried. Just report success.
+    return { ok: true }
+  },
+
+  'nav.openExternal'(args, state) {
+    // Same classification production's host frame applies (the shared
+    // @mythwork/protocol table): always → open, warn → ask, never → refuse.
+    // All paths resolve { ok: true } — production hides the outcome from the
+    // app, so a dev app must not come to depend on reading it either.
+    // Non-https is still dropped so an app that only ever runs against the
+    // dev host cannot come to depend on other schemes — except local-to-local
+    // links, which production's host frame also lets through over http.
+    const raw = String(args['url'] ?? '')
+    try {
+      const url = new URL(raw)
+      if (typeof window === 'undefined') return { ok: true }
+      const local = isLocalOutbound(window.location?.hostname ?? '', url)
+      if (url.protocol === 'https:' || local) {
+        const level = local
+          ? 'always'
+          : state.capabilities.outboundLinks === 'any'
+            ? 'always'
+            : classifyOutboundHost(url.hostname)
+        if (level === 'never') {
+          console.warn(`[mythwork dev] nav.openExternal: ${url.hostname} is never allowed`)
+        } else if (level === 'always' || window.confirm(`Open ${url.href} in a new tab?`)) {
+          window.open(url.href, '_blank', 'noopener,noreferrer')
+        }
+      }
+    } catch {
+      // Unparseable — production drops it too.
+    }
     return { ok: true }
   },
 
@@ -1311,11 +1389,11 @@ const handlers: Record<string, Handler> = {
  * `opts.noProfile` to start in onboarding mode: `kernel.signIn` adopts a
  * non-seed-maker identity so `profile.me` reports `no_profile` until
  * `profile.claimHandle` records a handle — exercising the explore onboarding
- * flow in dev. Pass `opts.firstParty` to simulate an allowlisted/first-party
- * app so anonymous `ai.chat`/`ai.complete` resolve instead of throwing
- * `'sign in required'` — mirroring the production first-party token (e.g.
- * myth-landing's signed-out hero planner) — and so `nav.topLevel` resolves
- * instead of throwing `'first-party apps only'`.
+ * flow in dev. Pass `opts.capabilities` to simulate the per-app grants of
+ * `project_app_config` — e.g. `{ platformPaidAi: true }` lets anonymous
+ * `ai.chat`/`ai.complete` resolve instead of throwing `'sign in required'`
+ * (mirroring the production first-party token, e.g. myth-landing's signed-out
+ * hero planner). See {@link DevCapabilities}.
  *
  * @example
  * ```ts
@@ -1334,7 +1412,7 @@ export function createDevHost(opts?: {
   user?: User
   signInAs?: User
   noProfile?: boolean
-  firstParty?: boolean
+  capabilities?: Partial<DevCapabilities>
 }): MessagePort {
   const chan = new MessageChannel()
   const hostPort = chan.port1 // host side — receives requests, sends replies
@@ -1343,7 +1421,7 @@ export function createDevHost(opts?: {
   const state = freshState({
     user: opts?.user,
     noProfile: opts?.noProfile,
-    firstParty: opts?.firstParty,
+    capabilities: opts?.capabilities,
   })
 
   hostPort.start()

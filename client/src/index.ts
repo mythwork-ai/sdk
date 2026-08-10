@@ -15,6 +15,9 @@
 
 import { acquirePort, browserEnv, type HandshakeEnv } from './handshake'
 import { MythworkClient } from './client'
+// Type-only: erased at compile time, so the dev host module stays out of
+// production bundles (the value import below remains dynamic).
+import type { DevCapabilities } from './dev/host'
 
 // Re-export the protocol so consumers get the wire spec (types, constants)
 // without a second dependency.
@@ -68,11 +71,11 @@ export interface ConnectOptions {
    * - `{ noProfile: true }` starts in onboarding mode (signed-in user with no
    *   claimed handle, so `profile.me` reports `no_profile` until
    *   `profile.claimHandle` records one).
-   * - `{ firstParty: true }` simulates a first-party/allowlisted app so anonymous
-   *   `ai.*` works in dev — mirroring production, where the serve worker mints a
-   *   first-party token (e.g. myth-landing's signed-out hero planner). Without it
-   *   the dev host throws `'sign in required'` for anonymous `ai.chat`/`ai.complete`,
-   *   imitating a non-allowlisted app.
+   * - `{ capabilities: { … } }` simulates the per-app grants of
+   *   `project_app_config` (all-deny by default, like an unconfigured
+   *   production app) — e.g. `{ platformPaidAi: true }` lets anonymous `ai.*`
+   *   work in dev, mirroring production's first-party token (myth-landing's
+   *   signed-out hero planner). See `DevCapabilities` in `@mythwork/sdk/dev`.
    *
    * The dev host module is **dynamically imported** so it is excluded from
    * production bundles when this option is not used.
@@ -84,11 +87,11 @@ export interface ConnectOptions {
    * const sdk = await connect({ dev: import.meta.env.DEV })
    * // Exercise the onboarding flow:
    * const sdk = await connect({ dev: { noProfile: true } })
-   * // Allowlisted app: anonymous ai.* works in dev:
-   * const sdk = await connect({ dev: { firstParty: true } })
+   * // Granted app: anonymous ai.* works in dev:
+   * const sdk = await connect({ dev: { capabilities: { platformPaidAi: true } } })
    * ```
    */
-  dev?: boolean | { noProfile?: boolean; firstParty?: boolean }
+  dev?: boolean | { noProfile?: boolean; capabilities?: Partial<DevCapabilities> }
 }
 
 /**

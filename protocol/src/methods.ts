@@ -1307,6 +1307,24 @@ export interface MethodMap {
   'nav.topLevel': { params: { target: 'explore' }; result: Ok }
 
   /**
+   * Host-mediated outbound link. The app frame carries no `allow-popups`, so
+   * this is the ONLY way a hosted app can send a visitor off-site; the host
+   * frame runs in the real top-level browsing context and opens the tab on
+   * the app's behalf.
+   *
+   * The host classifies `url` against its own reviewed destination table and
+   * either opens it, confirms it with the visitor, or refuses it — apps
+   * granted `outbound_links = 'any'` skip straight to opening. Non-https URLs
+   * are dropped.
+   *
+   * ALWAYS resolves `{ ok: true }`, whatever the host decided. A result that
+   * distinguished opened from refused would let an app probe the destination
+   * table and retarget its links at whatever slips through, so the outcome is
+   * deliberately not observable.
+   */
+  'nav.openExternal': { params: { url: string }; result: Ok }
+
+  /**
    * The in-app-routing <-> real-address-bar bridge. An app embedded in the
    * host frame's iframe owns its OWN session history — a router's
    * `history.pushState` only ever touches the iframe's window, which the

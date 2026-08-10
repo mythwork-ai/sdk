@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
 // Contract tests for useCompletion: streaming accumulation, isStreaming toggle,
-// and stop() abort without surfacing an error. Uses the dev host with firstParty
+// and stop() abort without surfacing an error. Uses the dev host with the platformPaidAi grant
 // mode so anonymous ai.complete calls resolve instead of throwing.
 
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
@@ -27,7 +27,7 @@ async function waitForSdk(api: ReturnType<typeof render>): Promise<void> {
 
 describe('useCompletion', () => {
   it('streams text into state and toggles isStreaming true→false', async () => {
-    const client = await connect({ dev: { firstParty: true } })
+    const client = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     let handle: ReturnType<typeof useCompletion> | null = null
 
     function Probe(): React.JSX.Element {
@@ -55,7 +55,7 @@ describe('useCompletion', () => {
       result = await handle!.complete('hello')
     })
 
-    // The dev host returns "(dev) hello" for prompt "hello" in firstParty mode.
+    // The dev host returns "(dev) hello" for prompt "hello" with the grant.
     expect(result!).toBe('(dev) hello')
     expect(handle!.text).toBe('(dev) hello')
     expect(handle!.isStreaming).toBe(false)
@@ -63,7 +63,7 @@ describe('useCompletion', () => {
   })
 
   it('stop() aborts the in-flight stream and does not surface an error', async () => {
-    const client = await connect({ dev: { firstParty: true } })
+    const client = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     let handle: ReturnType<typeof useCompletion> | null = null
 
     function Probe(): React.JSX.Element {
@@ -97,7 +97,7 @@ describe('useCompletion', () => {
   })
 
   it('second complete() supersedes the first — state reflects the second call only', async () => {
-    const client = await connect({ dev: { firstParty: true } })
+    const client = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     let handle: ReturnType<typeof useCompletion> | null = null
 
     function Probe(): React.JSX.Element {
@@ -138,7 +138,7 @@ describe('useCompletion', () => {
   })
 
   it('error state is set on non-abort failures', async () => {
-    const client = await connect({ dev: true }) // dev host, anonymous, no firstParty → ai.* throws
+    const client = await connect({ dev: true }) // dev host, anonymous, no platformPaidAi grant → ai.* throws
     let handle: ReturnType<typeof useCompletion> | null = null
 
     function Probe(): React.JSX.Element {

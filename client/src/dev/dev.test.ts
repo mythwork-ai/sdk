@@ -9,7 +9,7 @@
 // succeeds → myFavorites reflects it, addComment + threaded replies,
 // profile.me three states, profile.get for a seed handle, unknown method.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connect } from '../index'
 import { MythworkClient } from '../client'
 import { createDevHost } from './host'
@@ -354,7 +354,7 @@ describe('ai.* (mythwork-ai dev mock)', () => {
   })
 })
 
-describe('ai.* firstParty mode (anonymous allowlisted-app simulation)', () => {
+describe('ai.* platformPaidAi grant (anonymous granted-app simulation)', () => {
   let sdk: MythworkClient
 
   afterEach(() => {
@@ -362,27 +362,27 @@ describe('ai.* firstParty mode (anonymous allowlisted-app simulation)', () => {
   })
 
   it('anonymous ai.complete resolves to a (dev) echo (no sign-in throw)', async () => {
-    sdk = await connect({ dev: { firstParty: true } })
+    sdk = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     const text = await sdk.ai.complete('hello')
     expect(text).toContain('hello')
   })
 
   it('anonymous ai.chat resolves to an assistant message (no sign-in throw)', async () => {
-    sdk = await connect({ dev: { firstParty: true } })
+    sdk = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     const msg = await sdk.ai.chat([{ role: 'user', content: 'ping' }])
     expect(msg.role).toBe('assistant')
     expect(typeof msg.content).toBe('string')
     expect(msg.content).toContain('ping')
   })
 
-  it('a signed-in caller still works in firstParty mode (regression)', async () => {
-    sdk = await connect({ dev: { firstParty: true } })
+  it('a signed-in caller still works with the grant (regression)', async () => {
+    sdk = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     await sdk.auth.signIn()
     const text = await sdk.ai.complete('hi there')
     expect(text).toContain('hi there')
   })
 
-  it('default mode (dev:true) still throws for anonymous ai.* (non-allowlisted app)', async () => {
+  it('default mode (dev:true) still throws for anonymous ai.* (ungranted app)', async () => {
     sdk = await connect({ dev: true })
     await expect(sdk.ai.complete('hello')).rejects.toThrow(/sign in/i)
     await expect(sdk.ai.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(/sign in/i)
@@ -391,7 +391,7 @@ describe('ai.* firstParty mode (anonymous allowlisted-app simulation)', () => {
 
 describe('ai.* streaming (onChunk dev host)', () => {
   it('ai.complete with onChunk fires ≥1 delta and concat equals the resolved text', async () => {
-    const sdk = await connect({ dev: { firstParty: true } })
+    const sdk = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     const chunks: string[] = []
     const text = await sdk.ai.complete('hi', { onChunk: d => chunks.push(d) })
     expect(chunks.length).toBeGreaterThanOrEqual(1)
@@ -400,21 +400,21 @@ describe('ai.* streaming (onChunk dev host)', () => {
   })
 
   it('ai.complete without onChunk still returns the full text (non-streaming path)', async () => {
-    const sdk = await connect({ dev: { firstParty: true } })
+    const sdk = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     const text = await sdk.ai.complete('hello world')
     expect(typeof text).toBe('string')
     expect(text).toContain('hello world')
     sdk.port.close()
   })
 
-  it('signed-out non-firstParty rejects even with onChunk (posture unchanged)', async () => {
+  it('signed-out without the grant rejects even with onChunk (posture unchanged)', async () => {
     const sdk = await connect({ dev: true })
     await expect(sdk.ai.complete('hello', { onChunk: () => {} })).rejects.toThrow(/sign in/i)
     sdk.port.close()
   })
 
   it('ai.chat with onChunk fires ≥1 delta and concat equals resolved content', async () => {
-    const sdk = await connect({ dev: { firstParty: true } })
+    const sdk = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     const chunks: string[] = []
     const msg = await sdk.ai.chat([{ role: 'user', content: 'hi' }], {
       onChunk: d => chunks.push(d),
@@ -425,24 +425,162 @@ describe('ai.* streaming (onChunk dev host)', () => {
   })
 })
 
-describe('nav.topLevel (first-party-gated dev mock)', () => {
-  it('rejects for a non-first-party dev host', async () => {
+describe('nav.topLevel (grant-gated dev mock)', () => {
+  it('rejects for a dev host without the grant', async () => {
     const sdk = await connect({ dev: true })
-    await expect(sdk.nav.topLevel({ target: 'explore' })).rejects.toThrow(/first-party/i)
+    await expect(sdk.nav.topLevel({ target: 'explore' })).rejects.toThrow(/not granted/i)
     sdk.port.close()
   })
 
-  it('resolves { ok: true } for a first-party dev host (no real navigation)', async () => {
-    const sdk = await connect({ dev: { firstParty: true } })
+  it('resolves { ok: true } for a granted dev host (no real navigation)', async () => {
+    const sdk = await connect({ dev: { capabilities: { topLevelNav: true } } })
     await expect(sdk.nav.topLevel({ target: 'explore' })).resolves.toEqual({ ok: true })
     sdk.port.close()
   })
 
-  it('rejects an unrecognized target even in first-party mode', async () => {
-    const sdk = await connect({ dev: { firstParty: true } })
+  it('a platformPaidAi grant alone does NOT grant nav.topLevel (grants are separate)', async () => {
+    const sdk = await connect({ dev: { capabilities: { platformPaidAi: true } } })
+    await expect(sdk.nav.topLevel({ target: 'explore' })).rejects.toThrow(/not granted/i)
+    sdk.port.close()
+  })
+
+  it('rejects an unrecognized target even for a granted host', async () => {
+    const sdk = await connect({ dev: { capabilities: { topLevelNav: true } } })
     await expect(sdk.nav.topLevel({ target: 'bogus' as unknown as 'explore' })).rejects.toThrow(
       /unknown target/i,
     )
+    sdk.port.close()
+  })
+})
+
+describe('nav.openExternal (classified dev mock)', () => {
+  function stubWindow(confirmResult: boolean, hostname = 'app.example.dev') {
+    const open = vi.fn()
+    const confirm = vi.fn().mockReturnValue(confirmResult)
+    vi.stubGlobal('window', { open, confirm, location: { hostname } })
+    return { open, confirm }
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('opens an always-listed destination without asking', async () => {
+    const { open, confirm } = stubWindow(false)
+    const sdk = await connect({ dev: true })
+    await expect(sdk.nav.openExternal({ url: 'https://explore.myth.work/' })).resolves.toEqual({
+      ok: true,
+    })
+    expect(open).toHaveBeenCalledWith('https://explore.myth.work/', '_blank', 'noopener,noreferrer')
+    expect(confirm).not.toHaveBeenCalled()
+    sdk.port.close()
+  })
+
+  it('asks before a warn-level destination and opens only on confirm', async () => {
+    const { open, confirm } = stubWindow(true)
+    const sdk = await connect({ dev: true })
+    await sdk.nav.openExternal({ url: 'https://example.com/' })
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer')
+    sdk.port.close()
+  })
+
+  it('does not open a warn-level destination the developer declines, still ok', async () => {
+    const { open } = stubWindow(false)
+    const sdk = await connect({ dev: true })
+    await expect(sdk.nav.openExternal({ url: 'https://example.com/' })).resolves.toEqual({
+      ok: true,
+    })
+    expect(open).not.toHaveBeenCalled()
+    sdk.port.close()
+  })
+
+  it('refuses a never-listed destination without asking, still ok', async () => {
+    const { open, confirm } = stubWindow(true)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sdk = await connect({ dev: true })
+    await expect(sdk.nav.openExternal({ url: 'https://doubleclick.net/x' })).resolves.toEqual({
+      ok: true,
+    })
+    expect(open).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+    warn.mockRestore()
+    sdk.port.close()
+  })
+
+  it("outboundLinks: 'any' opens every https destination without asking", async () => {
+    const { open, confirm } = stubWindow(false)
+    const sdk = await connect({ dev: { capabilities: { outboundLinks: 'any' } } })
+    await sdk.nav.openExternal({ url: 'https://example.com/' })
+    expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer')
+    expect(confirm).not.toHaveBeenCalled()
+    sdk.port.close()
+  })
+
+  it('drops a non-https url without opening or asking, still ok', async () => {
+    const { open, confirm } = stubWindow(true)
+    const sdk = await connect({ dev: true })
+    await expect(sdk.nav.openExternal({ url: 'javascript:alert(1)' })).resolves.toEqual({
+      ok: true,
+    })
+    expect(open).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+    sdk.port.close()
+  })
+
+  it('local page → local target opens over http with no dialog, matching the host frame', async () => {
+    const { open, confirm } = stubWindow(false, 'localhost')
+    const sdk = await connect({ dev: true })
+    await expect(
+      sdk.nav.openExternal({ url: 'http://pocket-ledger.localhost:8788/' }),
+    ).resolves.toEqual({ ok: true })
+    expect(open).toHaveBeenCalledWith(
+      'http://pocket-ledger.localhost:8788/',
+      '_blank',
+      'noopener,noreferrer',
+    )
+    expect(confirm).not.toHaveBeenCalled()
+    sdk.port.close()
+  })
+
+  it('still drops an http local target when the page itself is not local', async () => {
+    const { open, confirm } = stubWindow(true)
+    const sdk = await connect({ dev: true })
+    await expect(
+      sdk.nav.openExternal({ url: 'http://pocket-ledger.localhost:8788/' }),
+    ).resolves.toEqual({ ok: true })
+    expect(open).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+    sdk.port.close()
+  })
+})
+
+describe('profile consent (skip_profile_consent dev mock)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('a declined consent prompt returns { ok:false, reason:"denied" } without claiming', async () => {
+    const confirm = vi.fn().mockReturnValue(false)
+    vi.stubGlobal('window', { confirm })
+    const sdk = await connect({ dev: true })
+    await sdk.auth.signIn()
+    await expect(sdk.profile.claimHandle({ handle: 'ada' })).resolves.toEqual({
+      ok: false,
+      reason: 'denied',
+    })
+    expect(confirm).toHaveBeenCalledOnce()
+    sdk.port.close()
+  })
+
+  it('the skip_profile_consent grant skips the prompt entirely', async () => {
+    const confirm = vi.fn().mockReturnValue(false)
+    vi.stubGlobal('window', { confirm })
+    const sdk = await connect({ dev: { capabilities: { skipProfileConsent: true } } })
+    await sdk.auth.signIn()
+    const r = (await sdk.profile.claimHandle({ handle: 'ada' })) as { handle?: string }
+    expect(r.handle).toBe('ada')
+    expect(confirm).not.toHaveBeenCalled()
     sdk.port.close()
   })
 })
@@ -1007,7 +1145,7 @@ describe('explore.updateAppMeta — override reflects across all reads (no card�
 
 describe('dev host — prompt presets', () => {
   it('ai.complete echoes systemPreset so dev mode does not break', async () => {
-    const sdk = await connect({ dev: { firstParty: true } })
+    const sdk = await connect({ dev: { capabilities: { platformPaidAi: true } } })
     const text = await sdk.ai.complete('hello', { systemPreset: 'project_plan' })
     expect(text).toContain('project_plan')
     expect(text).toContain('hello')
