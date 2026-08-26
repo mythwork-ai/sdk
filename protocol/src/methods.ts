@@ -200,6 +200,15 @@ export type ProfileMutationResult =
   | (Record<string, unknown> & { ok?: true })
 
 /**
+ * Whether the publisher showed the server it holds the published tree's bytes.
+ *
+ * Only a proven publish opens source reads (pull / eject) on the tree. A tree
+ * nobody else has published is proven without a challenge; a claim on bytes
+ * someone else published first needs one answered.
+ */
+export type PossessionOutcome = { proven: true } | { proven: false; reason: string }
+
+/**
  * The complete wire method map. Keys are the literal method strings; each value
  * declares the request `params` and the response `result`.
  */
@@ -356,8 +365,9 @@ export interface MethodMap {
 
   // ── config.* ────────────────────────────────────────────────────────────
 
-  /** Read the project's parsed config (always carries a `projectId`). */
-  'config.get': { params: { pid: string }; result: ProjectConfig }
+  /** Read the project's parsed config (always carries a `projectId`). Omit
+   *  `pid` to get the running app's own identity, without display content. */
+  'config.get': { params: { pid?: string }; result: ProjectConfig }
 
   // ── secrets.* ───────────────────────────────────────────────────────────
 
@@ -557,10 +567,13 @@ export interface MethodMap {
    * Publish the project's HEAD under `shortName`. Requires sign-in (associates a
    * canonical projectId first). Emits coarse `publish.progress` pushes
    * throughout. `alias` is `null` when no alias was advanced.
+   *
+   * `possession.proven: false` means the publish itself succeeded but source
+   * reads (pull / eject) stayed closed for this tree; republishing retries it.
    */
   'publish.run': {
     params: { pid: string; shortName: string }
-    result: { canonical: string; alias: string | null }
+    result: { canonical: string; alias: string | null; possession: PossessionOutcome }
   }
 
   // ── kernel.* ────────────────────────────────────────────────────────────
@@ -574,7 +587,9 @@ export interface MethodMap {
    */
   'kernel.signIn': { params: Record<string, never>; result: User }
   /**
-   * Sign out the platform session. Resolves optimistically with the anonymous
+   * Stop being identified to THIS app: the caller is recorded as anonymous for
+   * this project. The user's myth.work and Google sessions are untouched — an
+   * app cannot sign them out of the platform. Resolves with the anonymous
    * user; a `kernel.authChanged` push reconfirms.
    */
   'kernel.signOut': { params: Record<string, never>; result: User }

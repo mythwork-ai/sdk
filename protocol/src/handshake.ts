@@ -58,8 +58,9 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
  * `kernel.signIn` (host-iframe's `signInWithPopup` gives a real OAuth popup up
  * to 90s to complete, see `packages/host-iframe/src/auth.ts`). `kernel.signOut`
  * deliberately stays on the generic {@link DEFAULT_REQUEST_TIMEOUT_MS} instead
- * — `signOutFlow` is synchronous and never waits on a popup, so there's no
- * human-paced flow to budget extra time for (see `client.ts`'s `auth.signOut`).
+ * — `signOutFlow` is one identity write and never waits on a human, so there's
+ * no human-paced flow to budget extra time for (see `client.ts`'s
+ * `auth.signOut`).
  *
  * {@link DEFAULT_REQUEST_TIMEOUT_MS} is tuned for ordinary machine-speed calls
  * (fs/db/git reads and writes) and is deliberately short so a truly stuck

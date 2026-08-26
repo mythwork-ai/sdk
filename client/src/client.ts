@@ -306,13 +306,14 @@ export class MythworkClient {
         timeoutMs: opts?.timeoutMs ?? DEFAULT_INTERACTIVE_TIMEOUT_MS,
       }),
     /**
-     * Sign out the platform session. Wire: `kernel.signOut`.
+     * Stop being identified to this app; the platform session stays signed in.
+     * Wire: `kernel.signOut`.
      *
      * Uses the generic {@link import('@mythwork/protocol').DEFAULT_REQUEST_TIMEOUT_MS},
      * NOT {@link DEFAULT_INTERACTIVE_TIMEOUT_MS} — unlike `signIn`, `signOutFlow`
-     * (host-iframe's `bridges/kernel.ts`) is synchronous and never waits on a
-     * human-paced popup, so there's no race to budget extra time for. Giving it
-     * the 120s interactive budget would only make a genuinely-stuck signOut (from
+     * (host-iframe's `bridges/kernel.ts`) is one identity write and never waits
+     * on a human, so there's no race to budget extra time for. Giving it the
+     * 120s interactive budget would only make a genuinely-stuck signOut (from
      * some unrelated bug) take 4x longer to surface an error, for no benefit.
      */
     signOut: (params: MethodParams<'kernel.signOut'> = {}, opts?: RequestOptions) =>

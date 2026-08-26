@@ -55,7 +55,7 @@ export interface MythworkContextValue {
   authStatus: AuthStatus
   /** Trigger the platform sign-in flow (opens the host OAuth popup). */
   signIn(): Promise<void>
-  /** Sign out the platform session. */
+  /** Stop being identified to this app; the platform session stays signed in. */
   signOut(): Promise<void>
   /** Reset and re-run the connect handshake — recovers from `unavailable` without a page reload. */
   retry(): void

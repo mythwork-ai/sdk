@@ -21,7 +21,8 @@ export interface UseUserResult {
   /** Trigger the platform sign-in + identity-selection flow. State updates via
    * the authChanged push — callers don't need to setState themselves. */
   signIn(): Promise<void>
-  /** Sign out the platform session; state reverts to anonymous via the push. */
+  /** Stop being identified to this app (the platform session stays signed in);
+   * state reverts to anonymous via the push. */
   signOut(): Promise<void>
 }
 

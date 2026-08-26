@@ -7,7 +7,7 @@
 // Subscribing to the full type (`'fs.changed'`) matches only that exact type.
 
 import type { User } from './data'
-import type { AgentEvent } from './methods'
+import type { AgentEvent, PossessionOutcome } from './methods'
 
 /**
  * The complete push-event map. Keys are the literal `type` strings; each value
@@ -68,8 +68,9 @@ export interface EventMap {
 
   /**
    * Coarse publish progress for a `publish.run`. On `'published'`, `canonical`
-   * (and possibly `alias`) are set; on `'error'`, `error` carries the message.
-   * (These are coarse states, not streamed NDJSON phases.)
+   * (and possibly `alias`) are set, along with `possession`; on `'error'`,
+   * `error` carries the message. (These are coarse states, not streamed
+   * NDJSON phases.)
    */
   'publish.progress': {
     pid: string
@@ -77,6 +78,7 @@ export interface EventMap {
     canonical?: string
     alias?: string | null
     error?: string
+    possession?: PossessionOutcome
   }
 
   /**
