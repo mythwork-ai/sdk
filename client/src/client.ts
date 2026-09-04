@@ -8,8 +8,12 @@
 // the protocol types are the contract, the wire is unchanged.
 
 import {
+  DEFAULT_BUILD_TIMEOUT_MS,
   DEFAULT_INTERACTIVE_TIMEOUT_MS,
   type AiOpts,
+  type BuildOpts,
+  type BuildProgress,
+  type BuildResult,
   type ChatCompletion,
   type ChatMessage,
   type Event as ProtocolEvent,
@@ -842,6 +846,56 @@ export class MythworkClient {
       const content = assistantMessage(completion).content
       return typeof content === 'string' ? content : ''
     },
+    /**
+     * @experimental Build an app from a prompt into `opts.projectId`. Resolves
+     * {@link BuildResult} as soon as the preview is live — the build continues
+     * behind that URL, which hot-reloads itself, so there is nothing further to
+     * await. Wire: `ai.build`.
+     *
+     * `projectId` is REQUIRED and is the project to build INTO — typically one
+     * the caller just made with `project.create`, not the caller's own project.
+     * The platform authorizes the signed-in user against it server-side.
+     *
+     * Pass `onProgress` to receive {@link BuildProgress} ticks while it runs; a
+     * tick that does not parse as one is dropped rather than surfaced. Without
+     * it the call is buffered and silent until it resolves.
+     *
+     * Defaults to {@link DEFAULT_BUILD_TIMEOUT_MS} rather than the generic 30s —
+     * a build is a pipeline, not a round trip. Override via `reqOpts.timeoutMs`;
+     * spread order (`{ ...reqOpts, timeoutMs: reqOpts?.timeoutMs ?? DEFAULT }`)
+     * keeps a present-but-undefined `timeoutMs` on the default, matching
+     * `auth.signIn`.
+     *
+     * First-party apps only: the host rejects the call from anything else. And
+     * sign-in is required on top of that, specifically a real user session — the
+     * anonymous first-party token that makes `ai.complete` work signed-out does
+     * not authorize a build, so this rejects with `'sign in required'`.
+     */
+    build: async (
+      prompt: string,
+      opts: BuildOpts,
+      reqOpts?: RequestOptions,
+    ): Promise<BuildResult> => {
+      const timed = { ...reqOpts, timeoutMs: reqOpts?.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS }
+      const { projectId, onProgress } = opts
+      if (onProgress) {
+        // `stream: true` is set here, not by streamOverPort — same convention as
+        // aiWireOpts, so what the host sees always matches what the client did.
+        return streamOverPort<BuildResult>(
+          this.port,
+          'ai.build',
+          { prompt, projectId, stream: true } as MethodParams<'ai.build'>,
+          {
+            ...timed,
+            onChunk: raw => {
+              const progress = parseBuildProgress(raw)
+              if (progress) onProgress(progress)
+            },
+          },
+        )
+      }
+      return this.request('ai.build', { prompt, projectId }, timed)
+    },
   }
 
   // ── agent.* (hosted agent sessions — AI-SDK Layer 3) ─────────────────────────
@@ -945,6 +999,31 @@ function aiWireOpts(opts?: AiOpts): Record<string, unknown> {
   if (opts.thinking !== undefined) out.thinking = opts.thinking
   if (opts.onChunk !== undefined) out.stream = true
   return out
+}
+
+/**
+ * Parse one `ai.build` delta — a JSON-encoded {@link BuildProgress} — or null if
+ * it is not one. Progress is advisory: a malformed tick is dropped rather than
+ * failing a build that is otherwise running fine.
+ */
+function parseBuildProgress(raw: string): BuildProgress | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const p = parsed as Record<string, unknown>
+  if (typeof p.stage !== 'string') return null
+  if (typeof p.componentsTotal !== 'number' || typeof p.componentsDone !== 'number') return null
+  const progress: BuildProgress = {
+    stage: p.stage,
+    componentsTotal: p.componentsTotal,
+    componentsDone: p.componentsDone,
+  }
+  if (typeof p.component === 'string') progress.component = p.component
+  return progress
 }
 
 /** The assistant message from the first choice of a normalized completion. */

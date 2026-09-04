@@ -75,6 +75,26 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 export const DEFAULT_INTERACTIVE_TIMEOUT_MS = 120_000
 
 /**
+ * Default timeout, in milliseconds, for `ai.build` — the one RPC whose latency
+ * is a whole build pipeline rather than a round trip. The median run takes tens
+ * of seconds and a large one runs for minutes, so both
+ * {@link DEFAULT_REQUEST_TIMEOUT_MS} (30s) and {@link DEFAULT_INTERACTIVE_TIMEOUT_MS}
+ * (120s) would abandon builds that are working perfectly well — and abandoning
+ * one is not free: the client posts a `cancel`, the host aborts the event
+ * stream, and the caller sees a timeout for a job that goes on to succeed.
+ *
+ * 15 minutes is chosen to sit beyond any build we expect to be worth waiting
+ * for rather than to model a typical one. It is a backstop against a stuck
+ * stream, not a service-level target; a caller that wants to give up sooner
+ * passes its own `opts.timeoutMs`. Note the streaming path re-arms this budget
+ * on every progress delta, so it bounds SILENCE, not total build time — and the
+ * host's own SSE watchdog (240s between bytes in `readSseStream`; mythcode sends
+ * a keepalive every 15s) is the tighter bound on a dead stream, surfacing as
+ * `ai.build failed: sse stream stalled`.
+ */
+export const DEFAULT_BUILD_TIMEOUT_MS = 15 * 60_000
+
+/**
  * The `window` property the inner-app shim installs the received MessagePort
  * on. Code looks up `window.__oc?.port` to discover the live channel.
  */

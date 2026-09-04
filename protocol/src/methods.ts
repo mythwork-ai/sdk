@@ -75,6 +75,43 @@ export type AiOpts =
   | (AiOptsBase & { system?: never; systemPreset?: string })
 
 /**
+ * @experimental What `ai.build` resolves to: the URL of the running preview and
+ * the id of the build job that produced it. The job keeps running after this
+ * resolves — see {@link import('./methods').MethodMap} `'ai.build'`.
+ */
+export interface BuildResult {
+  previewUrl: string
+  jobId: string
+}
+
+/**
+ * @experimental One progress tick of an `ai.build` job, JSON-encoded into the
+ * `delta` of each correlated `ai.delta` push. `componentsDone`/`componentsTotal`
+ * describe the current stage's component fan-out; `component` names the one
+ * being worked on when the tick is component-scoped.
+ */
+export interface BuildProgress {
+  stage: string
+  componentsTotal: number
+  componentsDone: number
+  component?: string
+}
+
+/**
+ * @experimental `opts` for the `@mythwork/sdk` `ai.build` helper.
+ *
+ * `projectId` names the project to build INTO and is required — see the
+ * `'ai.build'` entry in {@link MethodMap} for why it is a caller argument rather
+ * than the host's own current project. `onProgress` is client-only (never
+ * serialized): passing it is what makes the helper take the streaming path and
+ * set `stream: true` on the outbound args.
+ */
+export interface BuildOpts {
+  projectId: string
+  onProgress?: (progress: BuildProgress) => void
+}
+
+/**
  * @experimental The reasons an `agent.*` call may fail as a gated RESULT (rather
  * than a thrown error):
  *   - `sign_in_required`      — signed out (enforced bridge-local, zero network).
@@ -164,7 +201,22 @@ export type AgentEvent =
       kind: 'error'
       message: string
       fatal: boolean
-      reason?: 'credits' | 'rate_limit' | 'sign_in' | 'aborted' | 'internal'
+      reason?:
+        | 'credits'
+        /** Transient: too many requests in a row. Retrying shortly works. */
+        | 'rate_limit'
+        /**
+         * A DAILY spend cap (this person's or the platform's), which resets at
+         * midnight UTC. Distinct from `rate_limit` because the recovery is
+         * different by a factor of hours, and describing it as "give it a
+         * moment" is the failure — the cap is checked per request, so it trips
+         * mid-build on a build that cannot resume until tomorrow.
+         */
+        | 'daily_cap'
+        | 'sign_in'
+        | 'aborted'
+        | 'internal'
+        | 'truncated'
     }
   | { kind: 'turn-done'; turnId: string; status: 'ok' | 'stopped' | 'error' }
   | { kind: 'usage'; promptTokens?: number; completionTokens?: number; costUsd?: number }
@@ -1307,6 +1359,50 @@ export interface MethodMap {
       stream?: boolean
     }
     result: ChatCompletion
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Ask the platform to BUILD an app from a natural-language prompt and resolve
+   * once its preview is live. Unlike `ai.chat`/`ai.complete` this does not talk
+   * to the `mythwork-ai` proxy at all: the host frame submits a job to the
+   * mythcode build server and streams its event feed.
+   *
+   * Resolves {@link BuildResult} at the FIRST preview — not at job completion.
+   * The job keeps running behind the returned `previewUrl`, which mythcode
+   * live-updates via its own HMR, so the page the caller opens keeps filling in
+   * after this promise settles. `jobId` identifies the run for correlation.
+   *
+   * Progress: with `stream: true` (the `@mythwork/sdk` `ai.build` helper sets it
+   * when the caller passes `onProgress`) each correlated `ai.delta` push carries
+   * a JSON-encoded {@link BuildProgress} in its `delta` — NOT the free text the
+   * `ai.chat`/`ai.complete` deltas carry. Without `stream` the call is silent
+   * until it resolves.
+   *
+   * `projectId` is the project to build INTO, and unlike every other method here
+   * it IS a caller argument. This is the one case where the host's own
+   * `ctx.projectId` is the wrong id: the caller is a builder app (myth-fff),
+   * so its current project is the BUILDER, while the app being generated lives
+   * in a project the builder just created via `project.create`. The trust anchor
+   * moves accordingly — the api worker authorizes the signed-in user against
+   * this project (write role) before it will mint an assertion for it, so the
+   * host frame never has to vouch for the id.
+   *
+   * FIRST-PARTY ONLY, for exactly that reason: a caller-named project plus a
+   * signed-in user is enough to spend that user's credits building into any
+   * project they own, so the host refuses the call outright from anything but a
+   * platform app ('ai.build: not granted for this app'), the same gate
+   * `nav.topLevel` uses.
+   *
+   * SIGN-IN REQUIRED, strictly, and separately from that gate — being a
+   * first-party app says who is CALLING, the session says who the USER is, and
+   * a build needs both. Only a real user session qualifies: the anonymous
+   * first-party token that lets `ai.complete` work signed-out does NOT authorize
+   * a build. Signed out → throws 'sign in required' with ZERO network.
+   */
+  'ai.build': {
+    params: { prompt: string; projectId: string; stream?: boolean }
+    result: BuildResult
   }
 
   // ── nav.* ───────────────────────────────────────────────────────────────

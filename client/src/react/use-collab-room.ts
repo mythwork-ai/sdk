@@ -7,6 +7,7 @@
 // The Y.Doc / Awareness / WebsocketProvider / `?jt=` token wiring is identical
 // to the code orbit-collab already runs in production.
 
+import { reconnectMaxBackoffMs, wireJoinTokenRefresh } from '@mythwork/protocol/collab-auth'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   applyAwarenessUpdate,
@@ -81,6 +82,8 @@ interface SharedRoom {
   doc: Y.Doc
   awareness: Awareness
   provider: WebsocketProvider | null
+  /** Teardown for the join-token refresh wiring; must run before provider.destroy(). */
+  stopTokenRefresh: (() => void) | null
   roomId: string
   serverUrl: string
   refcount: number
@@ -126,6 +129,10 @@ const DEFAULT_PROVIDER_FACTORY: ProviderFactory = (serverUrl, roomId, doc, opts)
   // the HMAC on connect. Local-first rooms have no token → no params.
   new WebsocketProvider(serverUrl, roomId, doc, {
     awareness: opts.awareness,
+    // y-websocket's own 2.5s ceiling means a room that cannot connect retries
+    // ~24 times a minute. Jittered per client so the fleet does not retry in
+    // lockstep after a deploy. See @mythwork/protocol/collab-auth.
+    maxBackoffTime: reconnectMaxBackoffMs(),
     ...(opts.joinToken ? { params: { jt: opts.joinToken } } : {}),
   })
 
@@ -137,6 +144,7 @@ export function _setProviderFactoryForTests(f: ProviderFactory): void {
 
 export function _resetCollabForTests(): void {
   for (const room of liveRooms) {
+    room.stopTokenRefresh?.()
     room.provider?.destroy()
     room.awareness.destroy()
     room.doc.destroy()
@@ -312,6 +320,7 @@ async function acquireRoom(
       doc,
       awareness,
       provider: null,
+      stopTokenRefresh: null,
       roomId,
       serverUrl,
       refcount: 1,
@@ -323,6 +332,40 @@ async function acquireRoom(
     if (connectWebsocket) {
       const provider = providerFactory(serverUrl, roomId, doc, { awareness, joinToken })
       room.provider = provider
+      // The join token lives 120s and the collab server checks it only at
+      // connect, so a disconnect longer than that turns every later reconnect
+      // into a guaranteed rejection, retried forever. Re-provision on a stale
+      // close instead. Rooms with no token (the dev relay) have nothing to
+      // refresh — `wireJoinTokenRefresh` is not wired for them at all.
+      if (joinToken) {
+        room.stopTokenRefresh = wireJoinTokenRefresh({
+          provider,
+          initialToken: joinToken,
+          // A fresh `collab.openRoom` mints a NEW token for the same room.
+          refreshJoinToken: async () => {
+            const fresh = await client.collab.openRoom({
+              pid,
+              name: opts.name,
+              scope,
+              projectName: opts.projectName,
+            })
+            // INVARIANT: the re-provision returns the same room. It holds
+            // because roomIds are HMAC-derived from the canonical projectId, so
+            // the same inputs cannot yield a different room. Asserted anyway
+            // rather than assumed: the token is about to be written into a
+            // provider already bound to `roomId`, and a mismatch would mean
+            // authorizing against a room this provider is not in. Refusing is
+            // the safe answer — the helper treats null as a mint failure and
+            // retries, which is what should happen if this ever fires.
+            if (fresh.roomId !== roomId) return null
+            return fresh.joinToken ?? null
+          },
+          onGiveUp: () => {
+            room.status = 'disconnected'
+            for (const l of room.statusListeners) l('disconnected')
+          },
+        })
+      }
       provider.on('status', (e: { status: CollabConnectionStatus }) => {
         room.status = e.status
         for (const l of room.statusListeners) l(e.status)
@@ -360,6 +403,9 @@ function releaseRoom(client: MythworkClient, key: string, room: SharedRoom): voi
   if (room.refcount > 0) return
   cache.delete(key)
   liveRooms.delete(room)
+  // Before destroy(): destroying closes the socket, which emits
+  // 'connection-close', and a live handler would re-provision a dead room.
+  room.stopTokenRefresh?.()
   room.provider?.destroy()
   room.awareness.destroy()
   room.doc.destroy()
