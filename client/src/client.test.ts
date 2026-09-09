@@ -121,6 +121,22 @@ describe('namespaced helper → wire method mapping', () => {
       'project.setDescription',
       { pid: 'p', description: 'd' },
     ],
+    [
+      'build.applyTheme',
+      () =>
+        client.build.applyTheme({
+          sessionId: 'sess_1',
+          theme: { style: 'retro', hue: 200, mode: 'dark' },
+        }),
+      'build.applyTheme',
+      { sessionId: 'sess_1', theme: { style: 'retro', hue: 200, mode: 'dark' } },
+    ],
+    [
+      'build.setTitle',
+      () => client.build.setTitle({ sessionId: 'sess_1', name: 'Renamed' }),
+      'build.setTitle',
+      { sessionId: 'sess_1', name: 'Renamed' },
+    ],
     ['profile.me', () => client.profile.me(), 'profile.me', {}],
     [
       'profile.myFavorites',
@@ -788,5 +804,65 @@ describe('event.sendBatch never-rejects contract', () => {
     await expect(
       c.event.sendBatch({ batch: [] }, { signal: controller.signal }),
     ).rejects.toMatchObject({ name: 'AbortError' })
+  })
+})
+
+describe('agent.create — the engine options ride through unchanged', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+  let outbound: { id: string; method: string; args: Record<string, unknown> }[]
+
+  beforeEach(() => {
+    chan = new MessageChannel()
+    outbound = []
+    chan.port2.start()
+    chan.port2.addEventListener('message', e => {
+      const d = e.data as { id: string; method: string; args: Record<string, unknown> }
+      outbound.push(d)
+      chan.port2.postMessage({ id: d.id, result: { sessionId: 'sess_1' } })
+    })
+    client = new MythworkClient(chan.port1)
+  })
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+  })
+
+  it('sends the mythcode engine, its project and an attached job verbatim', async () => {
+    const result = await client.agent.create({
+      engine: 'mythcode',
+      projectId: 'pTARGET',
+      jobId: 'ptarget-lz3k9a1',
+    })
+    expect(outbound).toHaveLength(1)
+    expect(outbound[0]!.method).toBe('agent.create')
+    expect(outbound[0]!.args).toEqual({
+      engine: 'mythcode',
+      projectId: 'pTARGET',
+      jobId: 'ptarget-lz3k9a1',
+    })
+    expect(result).toEqual({ sessionId: 'sess_1' })
+  })
+
+  it('adds nothing of its own when no engine is named (the standard engine)', async () => {
+    await client.agent.create({ persona: 'gaiad' })
+    expect(outbound[0]!.args).toEqual({ persona: 'gaiad' })
+  })
+
+  it('returns a create-time refusal as a result, not a rejection', async () => {
+    chan.port2.close()
+    const chan2 = new MessageChannel()
+    chan2.port2.start()
+    chan2.port2.addEventListener('message', e => {
+      const d = e.data as { id: string }
+      chan2.port2.postMessage({ id: d.id, result: { ok: false, reason: 'engine_not_granted' } })
+    })
+    const c = new MythworkClient(chan2.port1)
+    await expect(c.agent.create({ engine: 'mythcode', projectId: 'pTARGET' })).resolves.toEqual({
+      ok: false,
+      reason: 'engine_not_granted',
+    })
+    chan2.port1.close()
+    chan2.port2.close()
   })
 })

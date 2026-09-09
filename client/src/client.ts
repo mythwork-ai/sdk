@@ -160,6 +160,27 @@ export class MythworkClient {
       this.subscribe('project.descriptionChanged', handler),
   }
 
+  // ── build.* (the app a mythcode session is running) ───────────────────────
+  /** Change the app a `sdk.agent` mythcode session is running. Nothing is stored. */
+  readonly build = {
+    /**
+     * Restyle the app the mythcode session is running with `theme`. Resolves
+     * `{ applied: true }` when the running app took it, or
+     * `{ applied: false, reason }`; `pending`, `busy` and `evicted` mean the host
+     * holds the theme and applies it when the app is ready. Requires a
+     * first-party, signed-in caller and a session this app created. Wire:
+     * `build.applyTheme`.
+     */
+    applyTheme: (params: MethodParams<'build.applyTheme'>, opts?: RequestOptions) =>
+      this.request('build.applyTheme', params, opts),
+    /**
+     * Set the running app's title. Same result shape and requirements as
+     * `applyTheme`. Wire: `build.setTitle`.
+     */
+    setTitle: (params: MethodParams<'build.setTitle'>, opts?: RequestOptions) =>
+      this.request('build.setTitle', params, opts),
+  }
+
   // ── fs.* file ops ─────────────────────────────────────────────────────────
   /** Filesystem reads/writes. Maps to `fs.read/write/list/exists/rename/delete`. */
   readonly fs = {
@@ -909,12 +930,28 @@ export class MythworkClient {
    *
    * Protocol law: `turn-done` is the ONLY terminal signal; `error` carries
    * `fatal` and never implies termination; `cycle-start` bounds bubble segments.
+   *
+   * Two engines, one API. `create({ engine: 'mythcode', projectId })` runs the
+   * turns on the external mythcode build server: the first `send` builds, later
+   * ones edit, and the preview URL arrives as a `preview` event. The caller keeps
+   * no transcript and no job id, and the session id never changes — not even when
+   * mythcode evicts the app and the host reopens it. First-party, signed in.
+   *
+   * The engines lock differently: standard turns are serialised across the host
+   * frame, a mythcode session's block only itself and are capped at
+   * {@link DEFAULT_BUILD_TIMEOUT_MS} (then `error` `reason: 'timeout'`).
    */
   readonly agent = {
     /**
      * @experimental Open a new agent session. All options are optional. v1 rejects
      * `tools` declarations (`custom_tools_unsupported`); signed-out resolves
-     * gated-result. Wire: `agent.create`.
+     * gated-result.
+     *
+     * `engine: 'mythcode'` requires `projectId` and a first-party signed-in
+     * caller; every refusal is a gated-result decided with zero network. Pass
+     * `jobId` to re-attach to an existing build — the URL then arrives as a
+     * `preview` event during the first turn, succeed or fail.
+     * Wire: `agent.create`.
      */
     create: (params: MethodParams<'agent.create'>, opts?: RequestOptions) =>
       this.request('agent.create', params, opts),
@@ -938,7 +975,9 @@ export class MythworkClient {
     stop: (params: MethodParams<'agent.stop'>, opts?: RequestOptions) =>
       this.request('agent.stop', params, opts),
     /**
-     * @experimental Read session state for re-attach/replay. Wire: `agent.state`.
+     * @experimental Read session state for re-attach/replay. A mythcode session
+     * also carries `preview`, which is how to recover a URL after a reconnect:
+     * the transcript is bounded and can have lost the event. Wire: `agent.state`.
      */
     state: (params: MethodParams<'agent.state'>, opts?: RequestOptions) =>
       this.request('agent.state', params, opts),

@@ -143,6 +143,37 @@ describe('dev host — single-client project/fs/git', () => {
     expect(seen).toContain(null) // empty-string → null, also pushed
   })
 
+  it('build.* answers unavailable — there is no renderer in the dev host', async () => {
+    expect(
+      await sdk.build.applyTheme({
+        sessionId: 'dev-session-1',
+        theme: { style: 'flat', hue: 10, mode: 'light' },
+      }),
+    ).toEqual({ applied: false, reason: 'unavailable' })
+    expect(await sdk.build.setTitle({ sessionId: 'dev-session-1', name: 'Titled' })).toEqual({
+      applied: false,
+      reason: 'unavailable',
+    })
+  })
+
+  it('build.* still refuses what production refuses', async () => {
+    await expect(
+      sdk.build.applyTheme({
+        sessionId: '',
+        theme: { style: 'flat', hue: 10, mode: 'light' },
+      }),
+    ).rejects.toThrow(/build\.applyTheme: sessionId required/)
+    await expect(
+      sdk.build.applyTheme({
+        sessionId: 'dev-session-1',
+        theme: { style: 'modern', hue: 10, mode: 'light', secondaryhue: 20 } as never,
+      }),
+    ).rejects.toThrow(/theme invalid/)
+    await expect(sdk.build.setTitle({ sessionId: 'dev-session-1', name: '   ' })).rejects.toThrow(
+      /name required/,
+    )
+  })
+
   it('commitTree copies a source commit tree forward as a new commit (history grows)', async () => {
     const { pid } = await sdk.project.create({})
     await sdk.fs.write({ pid, path: '/index.html', bytes: enc.encode('<h1>v1</h1>') })

@@ -39,6 +39,7 @@ import type {
   User,
   UserAccess,
 } from './data'
+import type { AppThemeStyle } from './app-metadata'
 
 /**
  * @experimental Shared `opts` for the `ai.*` methods — the OpenAI-compatible
@@ -121,6 +122,14 @@ export interface BuildOpts {
  *   - `unknown_question`      — `agent.answer` id does not match the session's
  *                               pending `question` event.
  *   - `custom_tools_unsupported` — v1 rejects client `tools` declarations.
+ *   - `engine_not_granted`    — `engine: 'mythcode'` from a non-platform app, or
+ *                               an unrecognised engine. Answered before any
+ *                               argument is looked at.
+ *   - `project_required`      — `engine: 'mythcode'` with no `projectId`.
+ *   - `project_not_supported` — `projectId`/`jobId` on the standard engine.
+ *   - `job_mismatch`          — `jobId` names no app whose id is `projectId`.
+ *
+ * All decided in the host frame with ZERO network.
  */
 export type AgentGatedReason =
   | 'sign_in_required'
@@ -129,6 +138,10 @@ export type AgentGatedReason =
   | 'unknown_session'
   | 'unknown_question'
   | 'custom_tools_unsupported'
+  | 'engine_not_granted'
+  | 'project_required'
+  | 'project_not_supported'
+  | 'job_mismatch'
 
 /**
  * @experimental Gated-result failure envelope returned as a result value rather
@@ -148,6 +161,25 @@ export type GatedResult = { ok: false; reason: AgentGatedReason }
  * - `toolset`: named toolset restricts which tools the agent may call.
  * - `instructions`: bounded inline instruction appended last (≤2 KB).
  * - `tools`: custom tool declarations — v1 rejects with `custom_tools_unsupported`.
+ * - `engine`: which agent runs the turns (see below). Defaults to `'standard'`.
+ * - `projectId` / `jobId`: mythcode-engine only (see below).
+ *
+ * ## The engine
+ *
+ * `'standard'` is the in-browser builder agent. `'mythcode'` runs the turns on
+ * the external mythcode build server: the first turn builds the app, later turns
+ * edit it, and the preview URL arrives as a `preview` event. It ignores
+ * `persona`, `variant`, `model`, `toolset` and `instructions` — mythcode owns
+ * its own pipeline. Rules, all enforced at `agent.create` with ZERO network:
+ *
+ * - `projectId` REQUIRED, and a caller argument (as `ai.build`'s is: the caller
+ *   is a builder app, and the app lives in a project it just created). The api
+ *   worker authorizes the user against it before minting an assertion.
+ * - First-party caller AND a signed-in user; the anonymous first-party token
+ *   does not buy a turn.
+ * - `jobId` optional, attaching the session to an existing job; must name an app
+ *   whose id is `projectId`.
+ * - `projectId`/`jobId` are refused on the standard engine.
  */
 export interface AgentSessionOptions {
   persona?: string
@@ -156,6 +188,9 @@ export interface AgentSessionOptions {
   toolset?: string
   instructions?: string
   tools?: unknown[]
+  engine?: 'standard' | 'mythcode'
+  projectId?: string
+  jobId?: string
   // NOTE: there is deliberately NO `designUpgrade` here, and it must not come back.
   // It was added as a per-session force and that was a hole: `agent.*` is reachable
   // from the sandboxed app iframe (router.ts routes the prefix and passes
@@ -197,6 +232,13 @@ export type AgentEvent =
     }
   | { kind: 'question'; questionId: string; questions: { question: string; options: string[] }[] }
   | { kind: 'changes'; files: string[]; checkpoint?: string }
+  /**
+   * The session's app is being served at `url` by mythcode job `jobId`. Mythcode
+   * engine only. Fires on the first serve, on every `preview_updated`, and under
+   * a NEW `jobId` after an eviction was reopened — the session id never changes
+   * with it. Idempotent: point the frame at `url`, take `jobId` as current.
+   */
+  | { kind: 'preview'; url: string; jobId: string }
   | {
       kind: 'error'
       message: string
@@ -217,6 +259,22 @@ export type AgentEvent =
         | 'aborted'
         | 'internal'
         | 'truncated'
+        /** Another edit holds the app. Nothing spent; resend when it finishes. */
+        | 'busy'
+        /**
+         * mythcode declined. The reason is in `detail`; `message` is the same
+         * text under the prefix `edit refused: `. The only mythcode error text
+         * ever shown to a maker: printable, collapsed, cut at 240 chars.
+         */
+        | 'refused'
+        /**
+         * Past the host's wall-clock budget (mythcode engine, 15 min). Not
+         * `aborted`, which says the user stopped it: the build may still be
+         * running, and a fresh session attached to it may find it.
+         */
+        | 'timeout'
+      /** Sanitized supporting text; today only `refused` carries one. */
+      detail?: string
     }
   | { kind: 'turn-done'; turnId: string; status: 'ok' | 'stopped' | 'error' }
   | { kind: 'usage'; promptTokens?: number; completionTokens?: number; costUsd?: number }
@@ -259,6 +317,35 @@ export type ProfileMutationResult =
  * someone else published first needs one answered.
  */
 export type PossessionOutcome = { proven: true } | { proven: false; reason: string }
+
+/**
+ * An app's visual theme, as the mythcode renderer takes it. `style` is one of
+ * {@link APP_THEME_STYLES}; `hue` and `secondaryHue` are seed hues in DEGREES,
+ * any finite number (the renderer folds them into [0, 360) itself), and an
+ * omitted `secondaryHue` is derived as `hue + 150`. `mode` picks the token set.
+ *
+ * Not `ProjectConfig`'s `theme`, which is the catalog card's colour.
+ */
+export interface AppTheme {
+  style: AppThemeStyle
+  hue: number
+  secondaryHue?: number
+  mode: 'light' | 'dark'
+}
+
+/**
+ * Why a `build.*` call did not reach the running app.
+ *
+ * - `pending`     — no app yet; applied at the first preview.
+ * - `busy`        — a turn is running; applied when it finishes.
+ * - `evicted`     — the app was reopened; applied on the new job.
+ * - `not_ready`   — the app has no files yet; retry.
+ * - `unavailable` — the build server did not answer; retry.
+ */
+export type BuildApplyReason = 'pending' | 'busy' | 'not_ready' | 'evicted' | 'unavailable'
+
+/** What a `build.*` call did. Nothing is stored, so a refusal always says why. */
+export type BuildApplyResult = { applied: true } | { applied: false; reason: BuildApplyReason }
 
 /**
  * The complete wire method map. Keys are the literal method strings; each value
@@ -332,6 +419,29 @@ export interface MethodMap {
    * ProjectInfo}: `{ pid, role }`).
    */
   'project.remix': { params: { projectId: string }; result: ProjectInfo }
+
+  // ── build.* (the app a mythcode agent session is running) ───────────────
+
+  /**
+   * Restyle the app the mythcode session is running with `theme`. Answers
+   * `{ applied: true }` when the running app took it, or
+   * `{ applied: false, reason }`; `pending`, `busy` and `evicted` mean the host
+   * holds the theme and applies it when the app is ready. Requires a
+   * first-party, signed-in caller and a session this app created.
+   */
+  'build.applyTheme': {
+    params: { sessionId: string; theme: AppTheme }
+    result: BuildApplyResult
+  }
+  /**
+   * Set the running app's title. `name` is trimmed, non-empty and capped at 200
+   * characters. Same result shape and requirements as
+   * {@link MethodMap['build.applyTheme']}.
+   */
+  'build.setTitle': {
+    params: { sessionId: string; name: string }
+    result: BuildApplyResult
+  }
 
   // ── fs.* file ops ───────────────────────────────────────────────────────
 
@@ -1363,6 +1473,10 @@ export interface MethodMap {
   /**
    * @experimental — API may still evolve before 1.0.
    *
+   * SUPERSEDED by `agent.create({ engine: 'mythcode', projectId })`, which is
+   * the same pipeline with the host holding the transcript and the job id, and
+   * which can edit the app afterwards. Removed once the panel migrates.
+   *
    * Ask the platform to BUILD an app from a natural-language prompt and resolve
    * once its preview is live. Unlike `ai.chat`/`ai.complete` this does not talk
    * to the `mythwork-ai` proxy at all: the host frame submits a job to the
@@ -1469,7 +1583,9 @@ export interface MethodMap {
    * server-side defaults. v1 rejects `tools` declarations with
    * `{ ok:false, reason:'custom_tools_unsupported' }`. Gated-result: signed-out
    * resolves `{ ok:false, reason:'sign_in_required' }` with ZERO network.
-   * Wire: `agent.create`.
+   *
+   * `engine: 'mythcode'` runs the turns on the external build server — see
+   * {@link AgentSessionOptions} for its rules. Wire: `agent.create`.
    */
   'agent.create': {
     params: AgentSessionOptions
@@ -1516,11 +1632,23 @@ export interface MethodMap {
    *
    * Read session state for re-attach/replay. The `transcript` is bounded (oldest
    * turns dropped beyond cap). Gated-result: signed-out → `'sign_in_required'`.
+   *
+   * `preview` is the mythcode engine's current app, and is why this can be
+   * trusted after a reconnect: the transcript is FIFO-trimmed, so a long build's
+   * `preview` event can fall off it while the app is still served.
    * Wire: `agent.state`.
    */
   'agent.state': {
     params: { sessionId: string }
-    result: { status: AgentSessionStatus; transcript: unknown[] } | GatedResult
+    result:
+      | {
+          status: AgentSessionStatus
+          transcript: unknown[]
+          preview?: { url: string; jobId: string }
+          /** The theme the mythcode session has applied, or is holding for its app. */
+          theme?: AppTheme
+        }
+      | GatedResult
   }
 
   /**

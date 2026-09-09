@@ -227,6 +227,7 @@ const sdk = await connect({ dev: import.meta.env.DEV })
 The dev host answers the full surface over generic seed fixtures:
 - **explore / profile / kernel** — discovery, profiles, and auth (sign-in adopts a seeded `devuser`).
 - **project / fs / git / collab** — `project.create`/`open`, `fs.*`, the `fs.commit`/`log`/`head`/`showVersion` git ops, and `collab.openRoom`. Project state is **shared per pid across dev clients**, so two `connect({ dev: true })` clients that open the same project share one file tree + commit log and receive each other's `fs.changed` pushes.
+- **agent** — `agent.*` runs a scripted canned turn (including a file edit, so `fs.changed` fires). The **mythcode engine is not stubbed**: `agent.create({ engine: 'mythcode' })` answers `{ ok: false, reason: 'engine_not_granted' }`, and `projectId`/`jobId` on any other engine answer `project_not_supported`. That session runs against an external build server behind a first-party identity assertion, and a canned script of it would teach an app a shape no real host answers — take the refusal path in dev.
 
 ### Live collaboration in dev — `installDevCollabRelay()`
 
@@ -257,6 +258,7 @@ strings internally. Legacy strings are never exposed to application code.
 | Client namespace | Wire methods / events covered |
 |---|---|
 | `sdk.project` | `project.*` (incl. `project.remix`), `publish.run` (as `sdk.project.publish`) |
+| `sdk.build` | `build.applyTheme`, `build.setTitle` — restyle and set the title of the app a `sdk.agent` mythcode session is running |
 | `sdk.fs` | `fs.read`, `fs.write`, `fs.list`, `fs.exists`, `fs.rename`, `fs.delete`; event `fs.changed` |
 | `sdk.git` | `fs.commit`, `fs.log`, `fs.showVersion`, `fs.diff`, `fs.checkout`, `fs.head`, `fs.hasUncommittedChanges`, `fs.commitTree`, `fs.deleteCommit`, `fs.editCommitMessage`, `fs.flushDirty` |
 | `sdk.collab` | `collab.openRoom` |
@@ -267,6 +269,8 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.config` | `config.get` |
 | `sdk.event` | `event.sendBatch` |
 | `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite`, `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs` |
+| `sdk.ai` | `ai.chat`, `ai.complete`, `ai.build` — `@experimental`; `ai.build` is superseded by `sdk.agent.create({ engine: 'mythcode' })` |
+| `sdk.agent` | `agent.create`, `agent.send`, `agent.answer`, `agent.stop`, `agent.state`, `agent.dispose`; event `agent.event` — `@experimental` |
 | `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.myApps`, `explore.comments`, `explore.addComment` — `@experimental` |
 
 The `sdk.explore` namespace (15 methods) is `@experimental` — the surface may

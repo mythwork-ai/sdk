@@ -42,7 +42,12 @@
 //   - kernel.signIn/signOut: respond then emit kernel.authChanged push.
 //   - Unknown method: { id, error: 'Unknown method: <m>' } (never hangs).
 
-import { classifyOutboundHost, isLocalOutbound } from '@mythwork/protocol'
+import {
+  classifyOutboundHost,
+  isLocalOutbound,
+  parseAppName,
+  parseAppTheme,
+} from '@mythwork/protocol'
 import type { AgentEvent, PushMessage, RpcRequest, RpcResponse, User } from '@mythwork/protocol'
 import type {
   AppDetail,
@@ -366,6 +371,18 @@ function pushDescriptionChanged(project: DevProject): void {
     description: project.description,
   }
   for (const port of project.subscribers) port.postMessage(msg)
+}
+
+/**
+ * The `sessionId` every `build.*` method takes, refused the way the real host
+ * refuses it, and the whole of the gate here as in production. The dev host
+ * stubs `agent.*` but not the mythcode engine, so no session id here is ever a
+ * mythcode one — but the shape of the refusal is what an app codes against.
+ */
+function requireDevBuildSession(method: string, args: Record<string, unknown>): string {
+  const sessionId = String(args['sessionId'] ?? '')
+  if (!sessionId) throw new Error(`${method}: sessionId required`)
+  return sessionId
 }
 
 function devSha(project: DevProject): string {
@@ -1082,6 +1099,25 @@ const handlers: Record<string, Handler> = {
     return { ok: true }
   },
 
+  // ── build.* — there is no renderer in the dev host ──────────────────────
+  //
+  // These act on the app a mythcode agent session is running, and the dev host
+  // has neither (it refuses `engine: 'mythcode'` — see `agent.create`), so both
+  // answer `unavailable`: the same shape production gives when the renderer
+  // cannot be reached. Validation still runs, so a missing session id or a
+  // malformed theme or name fails here exactly as it would in the browser.
+  'build.applyTheme'(args) {
+    requireDevBuildSession('build.applyTheme', args)
+    if (parseAppTheme(args['theme']) === null) throw new Error('build.applyTheme: theme invalid')
+    return { applied: false, reason: 'unavailable' }
+  },
+
+  'build.setTitle'(args) {
+    requireDevBuildSession('build.setTitle', args)
+    if (parseAppName(args['name']) === null) throw new Error('build.setTitle: name required')
+    return { applied: false, reason: 'unavailable' }
+  },
+
   // ── fs (shared store; writes push fs.changed to other clients) ───────────────
 
   'fs.read'(args) {
@@ -1298,6 +1334,12 @@ const handlers: Record<string, Handler> = {
 
   'agent.create'(args, state) {
     if (state.user.kind === 'anonymous') return { ok: false, reason: 'sign_in_required' }
+    // Never stubbed: a canned script of an external build server would teach an
+    // app a shape no real host answers. Same refusal the real host gives.
+    if (args['engine'] === 'mythcode') return { ok: false, reason: 'engine_not_granted' }
+    if (args['projectId'] !== undefined || args['jobId'] !== undefined) {
+      return { ok: false, reason: 'project_not_supported' }
+    }
     // v1 rejects custom tool declarations
     if (Array.isArray(args['tools']) && (args['tools'] as unknown[]).length > 0) {
       return { ok: false, reason: 'custom_tools_unsupported' }

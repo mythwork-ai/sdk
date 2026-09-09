@@ -1,9 +1,9 @@
 {
   "name": "@mythwork/protocol",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "type": "module",
   "license": "MIT",
-  "description": "Spec-first TypeScript definition of the Mythwork host <-> inner-app postMessage protocol: envelope types, handshake constants, the full method map, the event map, and the pure data types they reference. Runtime code is constants, the outbound-host classifier, and the collab join-token reconnect contract.",
+  "description": "Spec-first TypeScript definition of the Mythwork host <-> inner-app postMessage protocol: envelope types, handshake constants, the full method map, the event map, and the pure data types they reference. Runtime code is constants, the outbound-host classifier, the app-metadata validators (theme, display name, mythcode job ids) both hosts share, and the collab join-token reconnect contract.",
   "exports": {
     ".": "./src/index.ts",
     "./envelope": "./src/envelope.ts",

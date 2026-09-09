@@ -111,6 +111,18 @@ without authentication. "Auth-gated" means the host requires a signed-in session
 | `project.setPublicCollab` | `{ pid: string; enabled: boolean }` | `{ projectId: string; publicCollab: boolean }` | Auth-gated; local-only/anonymous project rejects |
 | `project.remix` | `{ projectId: string }` | `ProjectInfo` | **Signed-in;** fork via CAS ref-copy of the source app's PUBLISHED tree (never its live editing head) into a fresh, parentless-commit project; result is the caller's new local handle (`{ pid, role }`). Backing: blob/CAS + projects D1 |
 
+### build.*
+
+`build.applyTheme` and `build.setTitle` change the app a mythcode agent session
+is running, addressed by that session's `sessionId`. Nothing is stored, and a
+change the running app cannot take yet is held by the host and applied when it
+can.
+
+| Method | Params | Result | Notes |
+|---|---|---|---|
+| `build.applyTheme` | `{ sessionId: string; theme: AppTheme }` | `BuildApplyResult` | Restyles the running app. First-party, signed-in, and a session this app created; a 400 throws `build.applyTheme failed: invalid` |
+| `build.setTitle` | `{ sessionId: string; name: string }` | `BuildApplyResult` | Sets the running app's title; `name` trimmed, non-empty, max 200 chars |
+
 ### fs.* — file operations
 
 | Wire method | Params | Result | Notes |
@@ -256,6 +268,9 @@ the `type` field.
 | `DiffLine` | `{ type: 'add' \| 'delete' \| 'context'; content: string }` |
 | `RoomDescriptor` | `{ roomId, serverUrl, joinToken? }` — from `collab.openRoom`; `joinToken` absent for local-only projects |
 | `ProjectInfo` | `{ pid: string; role: 'leader' \| 'follower' }` — from `project.create`/`project.open` |
+| `AppTheme` | `{ style: string; hue: number; secondaryHue?: number; mode: 'light' \| 'dark' }` — an app's visual theme; `style` is a mythcode preset id, `hue` is degrees |
+| `BuildApplyResult` | `{ applied: true } \| { applied: false; reason: BuildApplyReason }` — what a `build.*` call did; nothing is stored, so a refusal always says why |
+| `BuildApplyReason` | `'pending' \| 'busy' \| 'not_ready' \| 'evicted' \| 'unavailable'` — no app yet, applied at the first preview; a turn is running, applied when it finishes; the app has no files yet, retry; the app was reopened, applied on the new job; the build server did not answer, retry |
 | `ProjectConfig` | `{ projectId: string } & Record<string, unknown>` — `projectId` from the registry; display fields from `package.json` `mythwork` |
 | `Ok` | `{ ok: true }` — trivial success acknowledgement |
 | `ProfileMutationResult` | `{ ok: false; reason: string } \| (Record<string, unknown> & { ok?: true })` — profile mutation result |
