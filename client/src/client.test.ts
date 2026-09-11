@@ -1,9 +1,5 @@
-import {
-  type BuildProgress,
-  DEFAULT_BUILD_TIMEOUT_MS,
-  DEFAULT_INTERACTIVE_TIMEOUT_MS,
-  DEFAULT_REQUEST_TIMEOUT_MS,
-} from '@mythwork/protocol'
+import { DEFAULT_INTERACTIVE_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS } from '@mythwork/protocol'
+import type { Id } from '@mythwork/protocol/contract/db-client.interface'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MythworkClient } from './client'
 
@@ -44,18 +40,6 @@ describe('namespaced helper → wire method mapping', () => {
       () => client.git.commit({ pid: 'p', message: 'm' }),
       'fs.commit',
       { pid: 'p', message: 'm' },
-    ],
-    [
-      'store.get',
-      () => client.store.get({ store: 's', key: 'k' }),
-      'db.get',
-      { store: 's', key: 'k' },
-    ],
-    [
-      'store.put',
-      () => client.store.put({ store: 's', key: 'k', value: 1 }),
-      'db.put',
-      { store: 's', key: 'k', value: 1 },
     ],
     [
       'project.publish',
@@ -200,6 +184,43 @@ describe('namespaced helper → wire method mapping', () => {
     ],
     ['env.list', () => client.env.list(), 'env.list', {}],
     ['env.open', () => client.env.open(), 'env.open', {}],
+    [
+      'db.list',
+      () => client.db.list('task', { where: { done: false } }),
+      'database.list',
+      { entity: 'task', where: { done: false } },
+    ],
+    [
+      'db.get',
+      () => client.db.get('task', 42 as Id<string>),
+      'database.get',
+      { entity: 'task', id: 42 },
+    ],
+    [
+      'db.count',
+      () => client.db.count('task', { done: false }),
+      'database.count',
+      { entity: 'task', where: { done: false } },
+    ],
+    [
+      'db.create',
+      () => client.db.create('task', { title: 'write tests' }),
+      'database.create',
+      { entity: 'task', body: { title: 'write tests' } },
+    ],
+    [
+      'db.update',
+      () => client.db.update('task', 42 as Id<string>, { done: true }),
+      'database.update',
+      { entity: 'task', id: 42, patch: { done: true } },
+    ],
+    [
+      'db.delete',
+      () => client.db.delete('task', 42 as Id<string>),
+      'database.delete',
+      { entity: 'task', id: 42 },
+    ],
+    ['db.schema', () => client.db.schema(), 'database.schema', {}],
   ]
 
   for (const [label, invoke, wireMethod, wireArgs] of cases) {
@@ -516,144 +537,6 @@ describe('ai namespace (mythwork-ai proxy)', () => {
   })
 })
 
-describe('ai.build namespace (mythcode build server)', () => {
-  let chan: MessageChannel
-  let client: MythworkClient
-  let outbound: { id: string; method: string; args: Record<string, unknown> }[]
-  /** Progress ticks the fake host pushes before the terminal reply. */
-  let deltas: string[]
-
-  const buildResult = { previewUrl: 'https://preview.example/app', jobId: 'job-9' }
-
-  beforeEach(() => {
-    chan = new MessageChannel()
-    outbound = []
-    deltas = []
-    chan.port2.start()
-    chan.port2.addEventListener('message', e => {
-      const d = e.data as { id: string; method: string; args: Record<string, unknown> }
-      outbound.push(d)
-      if (d.args?.stream) {
-        for (const delta of deltas) {
-          chan.port2.postMessage({ type: 'ai.delta', requestId: d.id, delta })
-        }
-      }
-      chan.port2.postMessage({ id: d.id, result: buildResult })
-    })
-    client = new MythworkClient(chan.port1)
-  })
-  afterEach(() => {
-    chan.port1.close()
-    chan.port2.close()
-  })
-
-  it('sends ai.build with the prompt and the target projectId', async () => {
-    const result = await client.ai.build('a todo app', { projectId: 'pTARGET' })
-    expect(outbound).toHaveLength(1)
-    expect(outbound[0]!.method).toBe('ai.build')
-    expect(outbound[0]!.args).toEqual({ prompt: 'a todo app', projectId: 'pTARGET' })
-    expect(result).toEqual(buildResult)
-  })
-
-  it('does NOT send stream on the buffered path (no onProgress)', async () => {
-    await client.ai.build('x', { projectId: 'pTARGET' })
-    expect(outbound[0]!.args).not.toHaveProperty('stream')
-  })
-
-  it('with onProgress sends stream:true and parses each delta into BuildProgress', async () => {
-    deltas = [
-      JSON.stringify({ stage: 'plan', componentsTotal: 3, componentsDone: 0 }),
-      JSON.stringify({
-        stage: 'components',
-        componentsTotal: 3,
-        componentsDone: 1,
-        component: 'Header',
-      }),
-    ]
-    const seen: BuildProgress[] = []
-    const result = await client.ai.build('x', {
-      projectId: 'pTARGET',
-      onProgress: p => seen.push(p),
-    })
-
-    expect(outbound[0]!.args).toEqual({ prompt: 'x', projectId: 'pTARGET', stream: true })
-    expect(seen).toEqual([
-      { stage: 'plan', componentsTotal: 3, componentsDone: 0 },
-      { stage: 'components', componentsTotal: 3, componentsDone: 1, component: 'Header' },
-    ])
-    expect(result).toEqual(buildResult)
-  })
-
-  it('drops deltas that are not valid BuildProgress rather than surfacing them', async () => {
-    // Progress is advisory: a bad tick must not reach the callback, and must
-    // not fail a build that is otherwise running fine.
-    deltas = [
-      'not json at all',
-      JSON.stringify({ stage: 'plan' }),
-      JSON.stringify({ stage: 'plan', componentsTotal: '3', componentsDone: 0 }),
-      JSON.stringify({ stage: 'done', componentsTotal: 3, componentsDone: 3 }),
-    ]
-    const seen: BuildProgress[] = []
-    const result = await client.ai.build('x', {
-      projectId: 'pTARGET',
-      onProgress: p => seen.push(p),
-    })
-
-    expect(seen).toEqual([{ stage: 'done', componentsTotal: 3, componentsDone: 3 }])
-    expect(result).toEqual(buildResult)
-  })
-})
-
-// A build is a pipeline, not a round trip: it must not inherit the generic 30s
-// budget, and an explicit override must still win.
-describe('ai.build timeout budget', () => {
-  let chan: MessageChannel
-  let client: MythworkClient
-
-  beforeEach(() => {
-    vi.useFakeTimers()
-    chan = new MessageChannel()
-    chan.port2.start()
-    client = new MythworkClient(chan.port1)
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-    chan.port1.close()
-    chan.port2.close()
-  })
-
-  it('still pending at the generic 30s default, rejects at the build default', async () => {
-    const p = client.ai.build('x', { projectId: 'pTARGET' })
-    const settled = vi.fn()
-    p.then(settled, settled)
-
-    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
-    expect(settled).not.toHaveBeenCalled()
-
-    await vi.advanceTimersByTimeAsync(DEFAULT_BUILD_TIMEOUT_MS - DEFAULT_REQUEST_TIMEOUT_MS)
-    await expect(p).rejects.toThrow(/timed out after 900000ms/)
-  })
-
-  it('honors an explicit timeoutMs override', async () => {
-    const p = client.ai.build('x', { projectId: 'pTARGET' }, { timeoutMs: 5000 })
-    const assertion = expect(p).rejects.toThrow(/timed out after 5000ms/)
-    await vi.advanceTimersByTimeAsync(5000)
-    await assertion
-  })
-
-  it('applies the build default when timeoutMs is present-but-undefined', async () => {
-    const p = client.ai.build('x', { projectId: 'pTARGET' }, { timeoutMs: undefined })
-    const settled = vi.fn()
-    p.then(settled, settled)
-
-    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
-    expect(settled).not.toHaveBeenCalled()
-
-    await vi.advanceTimersByTimeAsync(DEFAULT_BUILD_TIMEOUT_MS - DEFAULT_REQUEST_TIMEOUT_MS)
-    await expect(p).rejects.toThrow(/timed out after 900000ms/)
-  })
-})
-
 describe('prompts.list namespace', () => {
   let chan: MessageChannel
   let client: MythworkClient
@@ -864,5 +747,130 @@ describe('agent.create — the engine options ride through unchanged', () => {
     })
     chan2.port1.close()
     chan2.port2.close()
+  })
+})
+
+describe('sdk.db.for(projectId) — a named project rides through every call', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+  let outbound: { id: string; method: string; args: Record<string, unknown> }[]
+
+  beforeEach(() => {
+    chan = new MessageChannel()
+    outbound = []
+    chan.port2.start()
+    chan.port2.addEventListener('message', e => {
+      const d = e.data as { id: string; method: string; args: Record<string, unknown> }
+      outbound.push(d)
+      chan.port2.postMessage({ id: d.id, result: { ok: true } })
+    })
+    client = new MythworkClient(chan.port1)
+  })
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+  })
+
+  it('the unbound sdk.db sends no projectId on any of the seven methods', async () => {
+    await client.db.list('task', { where: { done: false } })
+    await client.db.get('task', 42 as Id<string>)
+    await client.db.count('task', { done: false })
+    await client.db.create('task', { title: 'write tests' })
+    await client.db.update('task', 42 as Id<string>, { done: true })
+    await client.db.delete('task', 42 as Id<string>)
+    await client.db.schema()
+
+    expect(outbound).toHaveLength(7)
+    for (const call of outbound) expect(call.args).not.toHaveProperty('projectId')
+  })
+
+  it('sdk.db.for(projectId) sends projectId on every one of the seven methods', async () => {
+    const bound = client.db.for('pTARGET')
+    await bound.list('task', { where: { done: false } })
+    await bound.get('task', 42 as Id<string>)
+    await bound.count('task', { done: false })
+    await bound.create('task', { title: 'write tests' })
+    await bound.update('task', 42 as Id<string>, { done: true })
+    await bound.delete('task', 42 as Id<string>)
+    await bound.schema()
+
+    expect(outbound).toHaveLength(7)
+    expect(outbound[0]).toMatchObject({
+      method: 'database.list',
+      args: { entity: 'task', where: { done: false }, projectId: 'pTARGET' },
+    })
+    expect(outbound[1]).toMatchObject({
+      method: 'database.get',
+      args: { entity: 'task', id: 42, projectId: 'pTARGET' },
+    })
+    expect(outbound[2]).toMatchObject({
+      method: 'database.count',
+      args: { entity: 'task', where: { done: false }, projectId: 'pTARGET' },
+    })
+    expect(outbound[3]).toMatchObject({
+      method: 'database.create',
+      args: { entity: 'task', body: { title: 'write tests' }, projectId: 'pTARGET' },
+    })
+    expect(outbound[4]).toMatchObject({
+      method: 'database.update',
+      args: { entity: 'task', id: 42, patch: { done: true }, projectId: 'pTARGET' },
+    })
+    expect(outbound[5]).toMatchObject({
+      method: 'database.delete',
+      args: { entity: 'task', id: 42, projectId: 'pTARGET' },
+    })
+    expect(outbound[6]).toMatchObject({
+      method: 'database.schema',
+      args: { projectId: 'pTARGET' },
+    })
+  })
+
+  it('sdk.db.for(projectId, { jobId }) sends both ids on every one of the seven methods', async () => {
+    const bound = client.db.for('P', { jobId: 'P-job9' })
+    await bound.list('task', { where: { done: false } })
+    await bound.get('task', 42 as Id<string>)
+    await bound.count('task', { done: false })
+    await bound.create('task', { title: 'write tests' })
+    await bound.update('task', 42 as Id<string>, { done: true })
+    await bound.delete('task', 42 as Id<string>)
+    await bound.schema()
+
+    expect(outbound).toHaveLength(7)
+    expect(outbound[0]).toMatchObject({
+      method: 'database.list',
+      args: { entity: 'task', where: { done: false }, projectId: 'P', jobId: 'P-job9' },
+    })
+    expect(outbound[1]).toMatchObject({
+      method: 'database.get',
+      args: { entity: 'task', id: 42, projectId: 'P', jobId: 'P-job9' },
+    })
+    expect(outbound[2]).toMatchObject({
+      method: 'database.count',
+      args: { entity: 'task', where: { done: false }, projectId: 'P', jobId: 'P-job9' },
+    })
+    expect(outbound[3]).toMatchObject({
+      method: 'database.create',
+      args: { entity: 'task', body: { title: 'write tests' }, projectId: 'P', jobId: 'P-job9' },
+    })
+    expect(outbound[4]).toMatchObject({
+      method: 'database.update',
+      args: { entity: 'task', id: 42, patch: { done: true }, projectId: 'P', jobId: 'P-job9' },
+    })
+    expect(outbound[5]).toMatchObject({
+      method: 'database.delete',
+      args: { entity: 'task', id: 42, projectId: 'P', jobId: 'P-job9' },
+    })
+    expect(outbound[6]).toMatchObject({
+      method: 'database.schema',
+      args: { projectId: 'P', jobId: 'P-job9' },
+    })
+  })
+
+  it('sdk.db.for(projectId) without options sends only projectId, never jobId', async () => {
+    const bound = client.db.for('pTARGET')
+    await bound.schema()
+
+    expect(outbound).toHaveLength(1)
+    expect(outbound[0]!.args).not.toHaveProperty('jobId')
   })
 })

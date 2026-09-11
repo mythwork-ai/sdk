@@ -12,6 +12,7 @@
 
 import { API_METHOD_DESCRIPTORS, type MethodMap } from '@mythwork/protocol'
 import { describe, expect, it } from 'vitest'
+import { MythworkClient } from './client'
 
 const SIGNED_OUT = new Set(['anon', 'optional', 'throw', 'result'])
 const ON_ERROR = new Set(['throw', 'result'])
@@ -98,5 +99,96 @@ describe('API_METHOD_DESCRIPTORS (AGE-69 table integrity)', () => {
   it('marks ai.chat and ai.complete as streaming', () => {
     expect(API_METHOD_DESCRIPTORS['ai.chat']?.streaming).toBe(true)
     expect(API_METHOD_DESCRIPTORS['ai.complete']?.streaming).toBe(true)
+  })
+
+  it('binds database.* to the api worker projectdb routes', () => {
+    expect(API_METHOD_DESCRIPTORS['database.list']?.http).toEqual({
+      verb: 'GET',
+      path: '/projects/:pid/entities/:entity',
+    })
+    expect(API_METHOD_DESCRIPTORS['database.get']?.http).toEqual({
+      verb: 'GET',
+      path: '/projects/:pid/entities/:entity/:id',
+    })
+    expect(API_METHOD_DESCRIPTORS['database.count']?.http).toEqual({
+      verb: 'GET',
+      path: '/projects/:pid/entities/:entity/count',
+    })
+    expect(API_METHOD_DESCRIPTORS['database.create']?.http).toEqual({
+      verb: 'POST',
+      path: '/projects/:pid/entities/:entity',
+    })
+    expect(API_METHOD_DESCRIPTORS['database.update']?.http).toEqual({
+      verb: 'PATCH',
+      path: '/projects/:pid/entities/:entity/:id',
+    })
+    expect(API_METHOD_DESCRIPTORS['database.delete']?.http).toEqual({
+      verb: 'DELETE',
+      path: '/projects/:pid/entities/:entity/:id',
+    })
+    expect(API_METHOD_DESCRIPTORS['database.schema']?.http).toEqual({
+      verb: 'GET',
+      path: '/projects/:pid/schema',
+    })
+  })
+
+  it('locks the database.* postures: enriched reads, hard-gated writes', () => {
+    // The four reads (list/get/count/schema): attach-if-present, a stale 401
+    // propagates rather than downgrading to anonymous — same posture as the
+    // explore namespace's reads.
+    expect(auth('database.list')).toEqual({ signedOut: 'optional', onError: 'throw' })
+    expect(auth('database.get')).toEqual({ signedOut: 'optional', onError: 'throw' })
+    expect(auth('database.count')).toEqual({ signedOut: 'optional', onError: 'throw' })
+    expect(auth('database.schema')).toEqual({ signedOut: 'optional', onError: 'throw' })
+    // The three writes (create/update/delete): every verb in the SDK
+    // surface's contract resolves or rejects, and MethodMap carries no
+    // refusal-variant union, so a signed-out call or a per-row rule denial
+    // both reject rather than resolve as data.
+    expect(auth('database.create')).toEqual({ signedOut: 'throw', onError: 'throw' })
+    expect(auth('database.update')).toEqual({ signedOut: 'throw', onError: 'throw' })
+    expect(auth('database.delete')).toEqual({ signedOut: 'throw', onError: 'throw' })
+  })
+
+  it('leaves database.list out of the cursor-paginated set', () => {
+    // The contract's list page is { where, sort, limit, starting_after } →
+    // { rows, next } — a different convention from the { cursor? } →
+    // { items, nextCursor? } shape `paginated` marks, so database.list must
+    // stay unset rather than misread by the conformance harness.
+    expect(API_METHOD_DESCRIPTORS['database.list']?.paginated).toBeUndefined()
+  })
+})
+
+/**
+ * A declared method with no client binding is invisible to every consumer.
+ *
+ * `explore.setPinned` shipped its protocol type, its descriptor, its bridge
+ * and its route, and was never added to `client.explore` — so a caller
+ * probing `typeof sdk.explore.setPinned === "function"` got false forever and
+ * the whole feature was inert with nothing failing anywhere. tsc cannot catch
+ * it: an absent property on an object literal is not an error, only an
+ * absent USE of one.
+ *
+ * Scoped to `explore.*` because that surface is a flat one-to-one namespace.
+ * Other namespaces deliberately rename across the wire (`auth.getUser` →
+ * `kernel.getUser`) or expose a method under a different shape, so a blanket
+ * rule there would be wrong rather than useful.
+ */
+describe('client bindings cover the declared surface', () => {
+  it('binds every explore.* method the descriptor table declares', () => {
+    const chan = new MessageChannel()
+    try {
+      const client = new MythworkClient(chan.port1)
+      const bound = new Set(Object.keys(client.explore))
+      const declared = Object.keys(API_METHOD_DESCRIPTORS)
+        .filter(m => m.startsWith('explore.'))
+        .map(m => m.slice('explore.'.length))
+
+      expect(declared.length).toBeGreaterThan(0)
+      const missing = declared.filter(name => !bound.has(name))
+      expect(missing, `declared but not bound on client.explore: ${missing.join(', ')}`).toEqual([])
+    } finally {
+      chan.port1.close()
+      chan.port2.close()
+    }
   })
 })

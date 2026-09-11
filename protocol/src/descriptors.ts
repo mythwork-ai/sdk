@@ -171,6 +171,10 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     http: { verb: 'POST', path: '/explore/apps/:projectId/preview-token' },
     auth: { signedOut: 'result', onError: 'result' },
   },
+  'explore.setPinned': {
+    http: { verb: 'POST', path: '/explore/apps/:projectId/pin' },
+    auth: { signedOut: 'result', onError: 'result' },
+  },
   'explore.shareSettings': {
     http: { verb: 'POST', path: '/explore/apps/:projectId/share-settings' },
     auth: { signedOut: 'result', onError: 'result' },
@@ -345,5 +349,55 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     http: { verb: 'POST', path: '/' },
     auth: { signedOut: 'throw', onError: 'throw' },
     streaming: true,
+  },
+
+  // ── database.* (per-project relational data) ─────────────────────────────
+  // The four reads (list/get/count/schema) are enriched reads, same posture
+  // and reasoning as the explore namespace's reads: an attached session
+  // enriches which rows come back, and a stale-token 401 propagates rather
+  // than silently downgrading to anonymous → signedOut: 'optional',
+  // onError: 'throw'. The three writes (create/update/delete) are hard
+  // gated on both axes: the SDK surface's contract sentence commits every
+  // verb to resolve-or-reject semantics, and MethodMap carries no
+  // refusal-variant union a result-shaped denial could occupy, so a
+  // signed-out call or a per-row rule denial arriving as a 4xx both
+  // reject → signedOut: 'throw', onError: 'throw'. `database.list` is
+  // deliberately left un-paginated: `paginated` marks the `{ cursor? }` →
+  // `{ items, nextCursor? }` convention, and the contract's list page is
+  // `{ where, sort, limit, starting_after }` → `{ rows, next }` — a
+  // different convention the conformance harness must not conflate with it.
+  // http.path is documentary (see this file's own header): the builder leg
+  // never goes through the api worker at all, and no bridge dispatches off
+  // these paths. `:pid` here stands for the effective project — normally
+  // `ctx.projectId`, but a first-party caller (the IDE) may name a different
+  // one via `projectId` in the call's own params; a non-first-party caller
+  // naming one is refused before either leg is reached.
+  'database.list': {
+    http: { verb: 'GET', path: '/projects/:pid/entities/:entity' },
+    auth: { signedOut: 'optional', onError: 'throw' },
+  },
+  'database.get': {
+    http: { verb: 'GET', path: '/projects/:pid/entities/:entity/:id' },
+    auth: { signedOut: 'optional', onError: 'throw' },
+  },
+  'database.count': {
+    http: { verb: 'GET', path: '/projects/:pid/entities/:entity/count' },
+    auth: { signedOut: 'optional', onError: 'throw' },
+  },
+  'database.create': {
+    http: { verb: 'POST', path: '/projects/:pid/entities/:entity' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'database.update': {
+    http: { verb: 'PATCH', path: '/projects/:pid/entities/:entity/:id' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'database.delete': {
+    http: { verb: 'DELETE', path: '/projects/:pid/entities/:entity/:id' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'database.schema': {
+    http: { verb: 'GET', path: '/projects/:pid/schema' },
+    auth: { signedOut: 'optional', onError: 'throw' },
   },
 }

@@ -4,8 +4,8 @@
 // verified against the host bridge it maps to.
 //
 // Wire method strings keep their deployed names even where they leak old
-// naming (`kernel.getUser`, `db.get`, git ops under `fs.*`); the client maps
-// these to clean namespaces.
+// naming (`kernel.getUser`, git ops under `fs.*`); the client maps these to
+// clean namespaces.
 
 import type {
   AppDetail,
@@ -40,6 +40,12 @@ import type {
   UserAccess,
 } from './data'
 import type { AppThemeStyle } from './app-metadata'
+import type { Id, PageResult, SchemaRow } from './contract/db-client.interface'
+import type { ListQuery, EntityFilter } from './contract/list-query.v1'
+import type { CountResult } from './contract/count-result.v1'
+import type { CreateBody } from './contract/create-body.v1'
+import type { PatchBody } from './contract/update-patch.v1'
+import type { SchemaResponse } from './contract/schema-response.v1'
 
 /**
  * @experimental Shared `opts` for the `ai.*` methods — the OpenAI-compatible
@@ -74,43 +80,6 @@ interface AiOptsBase {
 export type AiOpts =
   | (AiOptsBase & { system?: string; systemPreset?: never })
   | (AiOptsBase & { system?: never; systemPreset?: string })
-
-/**
- * @experimental What `ai.build` resolves to: the URL of the running preview and
- * the id of the build job that produced it. The job keeps running after this
- * resolves — see {@link import('./methods').MethodMap} `'ai.build'`.
- */
-export interface BuildResult {
-  previewUrl: string
-  jobId: string
-}
-
-/**
- * @experimental One progress tick of an `ai.build` job, JSON-encoded into the
- * `delta` of each correlated `ai.delta` push. `componentsDone`/`componentsTotal`
- * describe the current stage's component fan-out; `component` names the one
- * being worked on when the tick is component-scoped.
- */
-export interface BuildProgress {
-  stage: string
-  componentsTotal: number
-  componentsDone: number
-  component?: string
-}
-
-/**
- * @experimental `opts` for the `@mythwork/sdk` `ai.build` helper.
- *
- * `projectId` names the project to build INTO and is required — see the
- * `'ai.build'` entry in {@link MethodMap} for why it is a caller argument rather
- * than the host's own current project. `onProgress` is client-only (never
- * serialized): passing it is what makes the helper take the streaming path and
- * set `stream: true` on the outbound args.
- */
-export interface BuildOpts {
-  projectId: string
-  onProgress?: (progress: BuildProgress) => void
-}
 
 /**
  * @experimental The reasons an `agent.*` call may fail as a gated RESULT (rather
@@ -172,9 +141,9 @@ export type GatedResult = { ok: false; reason: AgentGatedReason }
  * `persona`, `variant`, `model`, `toolset` and `instructions` — mythcode owns
  * its own pipeline. Rules, all enforced at `agent.create` with ZERO network:
  *
- * - `projectId` REQUIRED, and a caller argument (as `ai.build`'s is: the caller
- *   is a builder app, and the app lives in a project it just created). The api
- *   worker authorizes the user against it before minting an assertion.
+ * - `projectId` REQUIRED, and a caller argument: the caller is a builder app,
+ *   and the app lives in a project it just created. The api worker authorizes
+ *   the user against it before minting an assertion.
  * - First-party caller AND a signed-in user; the anonymous first-party token
  *   does not buy a turn.
  * - `jobId` optional, attaching the session to an existing job; must name an app
@@ -756,40 +725,65 @@ export interface MethodMap {
    */
   'kernel.signOut': { params: Record<string, never>; result: User }
 
-  // ── db.* ────────────────────────────────────────────────────────────────
-  // @internal maturity: a complete spec, but apps normally reach these through
-  // higher-level libraries (the key-value store helpers) rather than calling
-  // directly. Note: db.* runs on the SAME port but is dispatched by the db
-  // bridge, not the method router.
+  // ── database.* (per-project relational data) ─────────────────────────────
+  // Reuses the mythwork wire contract's own types rather than restating them —
+  // see contract/list-query.v1.ts, contract/get-row.v1.ts, contract/create-body.v1.ts,
+  // contract/update-patch.v1.ts, contract/count-result.v1.ts, contract/schema-response.v1.ts,
+  // contract/publish.v1.ts. A shape declared twice is exactly the drift those
+  // files exist to prevent, so this map imports rather than redeclares.
+  //
+  // `projectId` (optional, every verb): names the project to operate on, same
+  // shape as `AgentSessionOptions.projectId` above. A generated app never sets
+  // it — it always operates on its own project, `ctx.projectId` — so the field
+  // exists for the IDE, which is itself served as an app with its own fixed
+  // project id and otherwise could never reach the database of the project it
+  // is building. The bridge honors a named project only for a first-party
+  // caller; anyone else naming one is refused with zero network.
+  //
+  // `jobId` (optional, every verb): names the mythcode job to operate on,
+  // instead of the one the host's live session registry knows for the
+  // effective project. Honored only for a first-party caller, only on the
+  // builder leg, and only when the job belongs to the effective project — the
+  // published leg ignores it. After a page reload the host frame's session
+  // registry is empty, but the IDE still knows the job from its persisted
+  // build record; naming it directly is how the IDE reaches that job without
+  // waiting for a new session.
 
-  /**
-   * @internal Put a value under `(store, key)`. Resolves with `null`. Apps
-   * normally use the higher-level store helpers instead.
-   */
-  'db.put': { params: { store: string; key: string; value: unknown }; result: null }
-  /**
-   * @internal Get the value at `(store, key)`, or read-through. Apps normally
-   * use the higher-level store helpers instead.
-   */
-  'db.get': { params: { store: string; key: string }; result: unknown }
-  /**
-   * @internal Get every entry in a store. Apps normally use the higher-level
-   * store helpers instead.
-   */
-  'db.getAll': {
-    params: { store: string }
-    result: { key: string; value: unknown }[]
+  /** List one page of an entity's rows. */
+  'database.list': {
+    params: { entity: string; projectId?: string; jobId?: string } & ListQuery
+    result: PageResult
   }
-  /**
-   * @internal Delete the value at `(store, key)`. Resolves with `null`. Apps
-   * normally use the higher-level store helpers instead.
-   */
-  'db.delete': { params: { store: string; key: string }; result: null }
-  /**
-   * @internal Force a flush of the cloud sync queue. Resolves with `null`. Apps
-   * normally use the higher-level store helpers instead.
-   */
-  'db.sync': { params: Record<string, never>; result: null }
+  /** Read one row by id. */
+  'database.get': {
+    params: { entity: string; id: Id<string>; projectId?: string; jobId?: string }
+    result: SchemaRow
+  }
+  /** Count the rows the caller could list. */
+  'database.count': {
+    params: { entity: string; where?: EntityFilter; projectId?: string; jobId?: string }
+    result: CountResult
+  }
+  /** Create one row. */
+  'database.create': {
+    params: { entity: string; body: CreateBody; projectId?: string; jobId?: string }
+    result: SchemaRow
+  }
+  /** Patch one row. */
+  'database.update': {
+    params: { entity: string; id: Id<string>; patch: PatchBody; projectId?: string; jobId?: string }
+    result: SchemaRow
+  }
+  /** Delete one row. */
+  'database.delete': {
+    params: { entity: string; id: Id<string>; projectId?: string; jobId?: string }
+    result: null
+  }
+  /** Read the published schema. */
+  'database.schema': {
+    params: { projectId?: string; jobId?: string }
+    result: SchemaResponse
+  }
 
   // ── explore.* ───────────────────────────────────────────────────────────
   // @experimental — API may still evolve before 1.0. These map to api-worker
@@ -977,6 +971,13 @@ export interface MethodMap {
    * call, same as `explore.myRatings`. Backing: `apps` D1, scoped to the
    * authenticated viewer's own `publisher_user_id` only.
    *
+   * `q` (optional): case-insensitive substring filter over the app's effective
+   * name and tagline, scoped to the viewer's own rows exactly as the
+   * unfiltered list is, and combinable with `cursor`. Deliberately not the
+   * full-text index: that holds only currently-visible PUBLISHED apps, so it
+   * would answer nothing for a draft, and drafts are most of a maker's
+   * library. Absent, blank, or over-long `q` means no filter, never no match.
+   *
    * `projectId` (optional): narrow to a single owned project — no cursor, no
    * `nextCursor`, at most one item. For a caller (e.g. an editor hydrating
    * its own open project's publish status) that needs one project's
@@ -986,7 +987,7 @@ export interface MethodMap {
    * it were simply absent from the unfiltered list.
    */
   'explore.myApps': {
-    params: { cursor?: string; projectId?: string }
+    params: { cursor?: string; projectId?: string; q?: string }
     result: { items: MyAppSummary[]; nextCursor?: string } | { ok: false; reason: string }
   }
   /**
@@ -1075,6 +1076,26 @@ export interface MethodMap {
   'explore.updateAppMeta': {
     params: { projectId: string; name?: string; tagline?: string; note?: string }
     result: AppDetail | { ok: false; reason: string }
+  }
+  /**
+   * @experimental — API may still evolve before 1.0.
+   *
+   * Pin or unpin the project in the CALLER'S OWN list. Member-gated (any
+   * role), not owner-gated: the pin is the caller's own preference and
+   * changes nothing another member can see, and an owner-only gate would stop
+   * a collaborator ordering their own Shared with me. Membership is still
+   * required so a caller cannot store ids for projects they cannot see. Posture gated-result — signed-out resolves `{ ok: false, reason:
+   * 'sign_in_required' }` with ZERO network; a non-member or unknown
+   * projectId → `{ ok: false, reason: 'forbidden' }`.
+   *
+   * Idempotent: pinning an already-pinned project is a no-op, and a user may
+   * hold at most 50 pins. Read back as `pinned` on {@link MyAppSummary}.
+   * Backing: the viewer's own `user_prefs` row (migration 0032) — a display
+   * preference, so it lives with the user, not on the membership.
+   */
+  'explore.setPinned': {
+    params: { projectId: string; pinned: boolean }
+    result: Ok | { ok: false; reason: string }
   }
   /**
    * @experimental — API may still evolve before 1.0.
@@ -1470,55 +1491,6 @@ export interface MethodMap {
     }
     result: ChatCompletion
   }
-  /**
-   * @experimental — API may still evolve before 1.0.
-   *
-   * SUPERSEDED by `agent.create({ engine: 'mythcode', projectId })`, which is
-   * the same pipeline with the host holding the transcript and the job id, and
-   * which can edit the app afterwards. Removed once the panel migrates.
-   *
-   * Ask the platform to BUILD an app from a natural-language prompt and resolve
-   * once its preview is live. Unlike `ai.chat`/`ai.complete` this does not talk
-   * to the `mythwork-ai` proxy at all: the host frame submits a job to the
-   * mythcode build server and streams its event feed.
-   *
-   * Resolves {@link BuildResult} at the FIRST preview — not at job completion.
-   * The job keeps running behind the returned `previewUrl`, which mythcode
-   * live-updates via its own HMR, so the page the caller opens keeps filling in
-   * after this promise settles. `jobId` identifies the run for correlation.
-   *
-   * Progress: with `stream: true` (the `@mythwork/sdk` `ai.build` helper sets it
-   * when the caller passes `onProgress`) each correlated `ai.delta` push carries
-   * a JSON-encoded {@link BuildProgress} in its `delta` — NOT the free text the
-   * `ai.chat`/`ai.complete` deltas carry. Without `stream` the call is silent
-   * until it resolves.
-   *
-   * `projectId` is the project to build INTO, and unlike every other method here
-   * it IS a caller argument. This is the one case where the host's own
-   * `ctx.projectId` is the wrong id: the caller is a builder app (myth-fff),
-   * so its current project is the BUILDER, while the app being generated lives
-   * in a project the builder just created via `project.create`. The trust anchor
-   * moves accordingly — the api worker authorizes the signed-in user against
-   * this project (write role) before it will mint an assertion for it, so the
-   * host frame never has to vouch for the id.
-   *
-   * FIRST-PARTY ONLY, for exactly that reason: a caller-named project plus a
-   * signed-in user is enough to spend that user's credits building into any
-   * project they own, so the host refuses the call outright from anything but a
-   * platform app ('ai.build: not granted for this app'), the same gate
-   * `nav.topLevel` uses.
-   *
-   * SIGN-IN REQUIRED, strictly, and separately from that gate — being a
-   * first-party app says who is CALLING, the session says who the USER is, and
-   * a build needs both. Only a real user session qualifies: the anonymous
-   * first-party token that lets `ai.complete` work signed-out does NOT authorize
-   * a build. Signed out → throws 'sign in required' with ZERO network.
-   */
-  'ai.build': {
-    params: { prompt: string; projectId: string; stream?: boolean }
-    result: BuildResult
-  }
-
   // ── nav.* ───────────────────────────────────────────────────────────────
 
   /**

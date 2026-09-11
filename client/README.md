@@ -262,14 +262,14 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.fs` | `fs.read`, `fs.write`, `fs.list`, `fs.exists`, `fs.rename`, `fs.delete`; event `fs.changed` |
 | `sdk.git` | `fs.commit`, `fs.log`, `fs.showVersion`, `fs.diff`, `fs.checkout`, `fs.head`, `fs.hasUncommittedChanges`, `fs.commitTree`, `fs.deleteCommit`, `fs.editCommitMessage`, `fs.flushDirty` |
 | `sdk.collab` | `collab.openRoom` |
-| `sdk.store` (@internal) | `db.put`, `db.get`, `db.getAll`, `db.delete`, `db.sync`; event `db.change` |
+| `sdk.db` | `database.list`, `database.get`, `database.count`, `database.create`, `database.update`, `database.delete`, `database.schema` — an app never names a project, so these send no `projectId`. `sdk.db.for(projectId, options?)` returns the same seven methods bound to `projectId`, sent on every call; the IDE is the only caller allowed to name a project other than its own. `options.jobId` also rides along on every call, naming the job directly instead of relying on the host's live session registry — the IDE's own use, so its Data panel keeps working after a page reload wipes that registry |
 | `sdk.ydocs` (@internal) | `ydocs.append`, `ydocs.getAll`, `ydocs.snapshot`, `ydocs.clear` |
 | `sdk.auth` | `kernel.getUser`, `kernel.signIn`, `kernel.signOut`; event `kernel.authChanged` |
 | `sdk.secrets` | `secrets.check`, `secrets.proxyFetch` |
 | `sdk.config` | `config.get` |
 | `sdk.event` | `event.sendBatch` |
 | `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite`, `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs` |
-| `sdk.ai` | `ai.chat`, `ai.complete`, `ai.build` — `@experimental`; `ai.build` is superseded by `sdk.agent.create({ engine: 'mythcode' })` |
+| `sdk.ai` | `ai.chat`, `ai.complete` — `@experimental`. To build an app, open a mythcode session: `sdk.agent.create({ engine: 'mythcode', projectId })` |
 | `sdk.agent` | `agent.create`, `agent.send`, `agent.answer`, `agent.stop`, `agent.state`, `agent.dispose`; event `agent.event` — `@experimental` |
 | `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.myApps`, `explore.comments`, `explore.addComment` — `@experimental` |
 

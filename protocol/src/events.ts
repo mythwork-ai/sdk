@@ -54,13 +54,6 @@ export interface EventMap {
   'project.descriptionChanged': { pid: string; description: string | null }
 
   /**
-   * @internal A key-value store entry changed (put or delete). Apps normally
-   * observe this through the higher-level store helpers rather than subscribing
-   * directly. On a delete, `value` is `null` and `deleted` is true.
-   */
-  'db.change': { store: string; key: string; value: unknown; deleted: boolean }
-
-  /**
    * Authenticated user changed (sign-in, sign-out, identity update). Carries
    * the freshly resolved {@link User}.
    */

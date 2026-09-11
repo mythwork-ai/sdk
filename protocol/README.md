@@ -1,15 +1,27 @@
 # @mythwork/protocol
 
-Wire protocol v1 for the Mythwork host ↔ inner-app postMessage channel.
-This package is the spec: it defines every message shape, every RPC method, and
-every push event as TypeScript types, plus the constants the handshake and
-transport rely on.
+Wire protocol v1 for the Mythwork host ↔ inner-app postMessage channel, plus
+the per-project database's client-facing wire contract. Each spec is the
+source of truth for its own surface: it defines every message shape, method,
+and event (or, for the database, every request and response shape) as
+TypeScript types, plus the runtime code each side needs to speak it.
 
 **There is no version negotiation on the wire.** `oc-init` carries no version
 field; `PROTOCOL_VERSION = 1` is exported for documentation only. Adding a
 negotiation field is a host-side follow-up, not part of this contract.
 
-Zero dependencies. Runtime code is constants only.
+Zero dependencies. Runtime code is mostly constants, plus the small amount of
+logic described below and in the contract directory.
+
+## The per-project database wire contract
+
+`src/contract/` holds the client-facing types for a project's own database:
+request and response shapes for each verb, entity and schema types, error
+codes, and the token compilers and stamping helpers a client needs to speak
+the wire format. Each file is exported individually under `./contract/*`
+(see `exports` in `package.json`). The prose contract these types implement,
+`src/contract/wire-contract-v1.md`, lives in this directory but is excluded
+from the published package.
 
 ---
 
@@ -224,18 +236,39 @@ supply or spoof attribution.
 |---|---|---|---|
 | `event.sendBatch` | `{ batch: Record<string, unknown>[] }` | `Ok` | Best-effort: the host forwards the batch server-side and always resolves `Ok`, even if the forward fails. Caps (server-enforced): `batch` ≤ 100 items; each item a JSON object whose serialization is ≤ 8KB of UTF-8 bytes — a violating item is dropped and counted server-side, never fatal to the rest of the batch |
 
-### db.* — @internal
+### database.* — per-project relational data
 
-Apps normally reach key-value storage through higher-level store helpers rather
-than calling these directly.
+Reuses the mythwork wire contract's own request/response types (`src/contract/*`)
+rather than restating them — see "The per-project database wire contract" above.
+The four reads (`list`/`get`/`count`/`schema`) are enriched reads, same posture
+as the explore namespace's reads: an attached session enriches which rows come
+back, and a stale-token 401 propagates rather than silently downgrading to
+anonymous. The three writes (`create`/`update`/`delete`) are auth-gated: a
+signed-out call or a per-row rule denial both reject.
+
+Every verb also takes an optional `projectId`, naming the project to operate
+on instead of the caller's own. A generated app never sets it. It exists for
+the IDE, which is served as an app with its own fixed project id and would
+otherwise never reach the database of the project the maker is building — the
+bridge honors a named project only for a first-party caller and refuses it
+from anyone else.
+
+Every verb also takes an optional `jobId`, naming the mythcode job to operate
+on instead of the one the host's live session registry finds for the
+project. Honored under the same first-party rule as `projectId`, and only
+when the job belongs to the effective project. It exists because after a
+page reload the IDE names the job it already knows from its own build
+record, instead of waiting on a new session.
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
-| `db.put` | `{ store: string; key: string; value: unknown }` | `null` | @internal |
-| `db.get` | `{ store: string; key: string }` | `unknown` | @internal |
-| `db.getAll` | `{ store: string }` | `{ key: string; value: unknown }[]` | @internal |
-| `db.delete` | `{ store: string; key: string }` | `null` | @internal |
-| `db.sync` | `{}` | `null` | @internal Force a cloud-sync queue flush |
+| `database.list` | `{ entity: string; projectId?: string; jobId?: string } & ListQuery` | `PageResult` | List one page of an entity's rows |
+| `database.get` | `{ entity: string; id: Id<string>; projectId?: string; jobId?: string }` | `SchemaRow` | Read one row by id |
+| `database.count` | `{ entity: string; where?: EntityFilter; projectId?: string; jobId?: string }` | `CountResult` | Count the rows the caller could list |
+| `database.create` | `{ entity: string; body: CreateBody; projectId?: string; jobId?: string }` | `SchemaRow` | Create one row; auth-gated |
+| `database.update` | `{ entity: string; id: Id<string>; patch: PatchBody; projectId?: string; jobId?: string }` | `SchemaRow` | Patch one row; auth-gated |
+| `database.delete` | `{ entity: string; id: Id<string>; projectId?: string; jobId?: string }` | `null` | Delete one row; auth-gated |
+| `database.schema` | `{ projectId?: string; jobId?: string }` | `SchemaResponse` | Read the published schema |
 
 ---
 
@@ -250,7 +283,6 @@ the `type` field.
 | `project.lifecycle` | `{ kind: 'project:opened' \| 'project:closed' \| 'project:created' \| 'project:deleted'; pid: string }` or `{ kind: 'project:renamed'; pid: string; newName: string }` or `{ kind: 'project:leader-changed'; pid: string }` | Project lifecycle transition; `newName` present only on `'project:renamed'` |
 | `project.namesChanged` | `{ pid: string; name: string \| null }` | Display name updated (e.g. via collab sync); `null` when config transiently yields no name |
 | `project.descriptionChanged` | `{ pid: string; description: string \| null }` | Top-level package.json `description` updated (e.g. via collab sync or `project.setDescription`); `null` when unset |
-| `db.change` | `{ store: string; key: string; value: unknown; deleted: boolean }` | @internal Key-value store entry changed; `value` is `null` and `deleted` is `true` on delete |
 | `kernel.authChanged` | `{ user: User }` | Auth state changed (sign-in, sign-out, identity update) |
 | `publish.progress` | `{ pid: string; state: 'publishing' \| 'published' \| 'error'; canonical?: string; alias?: string \| null; error?: string }` | Coarse publish progress for a `publish.run`; `canonical`/`alias` set on `'published'`; `error` set on `'error'` |
 
@@ -316,7 +348,8 @@ Conventions for this surface:
 | `explore.rate` | `{ projectId: string; stars: 1 \| 2 \| 3 \| 4 \| 5 }` | `Ok \| { ok: false; reason: string }` | **Signed-in** (signed-out → `{ ok: false, reason: 'sign_in_required' }`, zero network). Backing: ratings D1 (aggregated into app_stats) |
 | `explore.clearRating` | `{ projectId: string }` | `Ok \| { ok: false; reason: string }` | **Signed-in;** re-clicking the current star clears. Backing: ratings D1 |
 | `explore.myRatings` | `{}` | `{ ratings: Record<string, number> } \| { ok: false; reason: string }` | **Signed-in;** `projectId` → stars. Backing: ratings D1 |
-| `explore.myApps` | `{ cursor?: string }` | `{ items: MyAppSummary[]; nextCursor?: string } \| { ok: false; reason: string }` | **Signed-in;** the viewer's own apps — published, unpublished, and scan-gate-restricted — flagged (`unpublished`/`restricted`) rather than filtered. Scoped only to the caller's own `publisher_user_id`. Backing: apps D1 |
+| `explore.myApps` | `{ cursor?: string; projectId?: string; q?: string }` | `{ items: MyAppSummary[]; nextCursor?: string } \| { ok: false; reason: string }` | **Signed-in;** the viewer's own apps — published, unpublished, and scan-gate-restricted — flagged (`unpublished`/`restricted`) rather than filtered. Scoped only to the caller's own `publisher_user_id`. `q` substring-filters the effective name/tagline (not the FTS index, which omits drafts). Backing: apps D1 |
+| `explore.setPinned` | `{ projectId: string; pinned: boolean }` | `Ok \| { ok: false; reason: string }` | **Member-gated (any role);** pins the project in the caller's OWN list — a per-user display preference on their own `user_prefs` row, so it changes nothing another member sees. Idempotent; capped at 50 pins per user. Backing: `user_prefs.pinned_project_ids` (JSON array, one row per user; migration 0032) |
 | `explore.comments` | `{ projectId: string; cursor?: string }` | `{ items: CommentNode[]; nextCursor?: string }` | Public; newest first, one nesting level. Backing: comments D1 |
 | `explore.addComment` | `{ projectId: string; body: string; parentCommentId?: string }` | `CommentNode \| { ok: false; reason: string }` | **Signed-in;** `parentCommentId` present = reply (cannot nest further). Backing: comments D1 |
 
@@ -357,7 +390,7 @@ Signed-in-scoped app collections, replacing the frontend's localStorage-only `st
 | `MakerRef` | `{ handle: string; displayName: string }` — lightweight maker reference embedded in app/comment rows |
 | `AppSummary` | `{ projectId, alias, name, tagline, description: string \| null, maker: MakerRef, tags: string[], launches, publishedAt, theme?, badge?, editorsChoice, rating: { average, count }, trendPct?, favoritedByViewer? }` — one app in discovery lists; `description` is the published top-level package.json `description` (`null` when none); `favoritedByViewer` present only with a session |
 | `AppDetail` | `AppSummary & { makersNote?: string; remixCount: number; remixedFrom: { projectId: string; name: string } \| null }` — full app detail from `explore.getApp`; `remixedFrom` is `null` for an organic app or a non-visible parent (existence-hiding) |
-| `MyAppSummary` | `AppSummary & { unpublished: boolean; restricted: boolean }` — one app in the viewer's own `explore.myApps` list; flags replace the filtering the public listing applies |
+| `MyAppSummary` | `AppSummary & { status: 'draft' \| 'live' \| 'unpublished'; restricted: boolean; updatedAt: number; pinned: boolean }` — one app in the viewer's own `explore.myApps` list; `status`/`restricted` replace the filtering the public listing applies, and `updatedAt` is the project's last-touched time (bumped every commit — the recency this list is already ordered by, which `publishedAt` cannot express for a draft); `pinned` is whether THIS viewer pinned it |
 | `MakerSummary` | `{ handle, displayName, picture?, bio?, location?, link?, appCount, totalLaunches, followedByViewer? }` — maker card; `followedByViewer` present only with a session |
 | `SpotlightItem` | `{ projectId, kicker, headline, blurb }` — the editorial spotlight slot |
 | `CollectionInfo` | `{ id, title, blurb, tags: string[], theme? }` — one editorial collection |

@@ -235,6 +235,23 @@ export type MyAppSummary = AppSummary & {
   status: AppStatus
   /** True when the app is hidden from Discover by the read-time moderation scan gate. */
   restricted: boolean
+  /**
+   * Epoch milliseconds the PROJECT was last touched — bumped on every commit,
+   * so it is the one field that answers "when did I last work on this".
+   *
+   * Distinct from `publishedAt`, which is 0 for a draft and frozen at first
+   * publish otherwise. This list is already ORDERED by
+   * `COALESCE(published_at, updated_at, 0)` server-side, so a caller that
+   * groups the list by recency had the order but not the times; carrying the
+   * time makes the two agree by construction rather than by re-derivation.
+   */
+  updatedAt: number
+  /**
+   * Whether the VIEWER has pinned this app. Per-viewer, not per-app: a
+   * collaborator pinning a shared project does not pin it for the owner.
+   * Read from the viewer's own `user_prefs` row (migration 0032).
+   */
+  pinned: boolean
 }
 
 /**

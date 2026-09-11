@@ -1,9 +1,9 @@
 {
   "name": "@mythwork/protocol",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "type": "module",
   "license": "MIT",
-  "description": "Spec-first TypeScript definition of the Mythwork host <-> inner-app postMessage protocol: envelope types, handshake constants, the full method map, the event map, and the pure data types they reference. Runtime code is constants, the outbound-host classifier, the app-metadata validators (theme, display name, mythcode job ids) both hosts share, and the collab join-token reconnect contract.",
+  "description": "Spec-first TypeScript definition of the Mythwork host <-> inner-app postMessage protocol: envelope types, handshake constants, the full method map, the event map, and the pure data types they reference. Also carries the per-project database wire contract types (client-facing request/response shapes, entity and schema types, error codes). Runtime code is constants, the outbound-host classifier, the app-metadata validators (theme, display name, mythcode job ids) both hosts share, the collab join-token reconnect contract, and the wire contract's token compilers and stamping helpers.",
   "exports": {
     ".": "./src/index.ts",
     "./envelope": "./src/envelope.ts",
@@ -11,11 +11,29 @@
     "./data": "./src/data.ts",
     "./methods": "./src/methods.ts",
     "./events": "./src/events.ts",
-    "./collab-auth": "./src/collab-auth.ts"
+    "./collab-auth": "./src/collab-auth.ts",
+    "./contract/config": "./src/contract/config.ts",
+    "./contract/count-result.v1": "./src/contract/count-result.v1.ts",
+    "./contract/create-body.v1": "./src/contract/create-body.v1.ts",
+    "./contract/db-client.interface": "./src/contract/db-client.interface.ts",
+    "./contract/delete-result.v1": "./src/contract/delete-result.v1.ts",
+    "./contract/entity.types.v1": "./src/contract/entity.types.v1.ts",
+    "./contract/get-row.v1": "./src/contract/get-row.v1.ts",
+    "./contract/list-query.v1": "./src/contract/list-query.v1.ts",
+    "./contract/number-baseline.v1": "./src/contract/number-baseline.v1.ts",
+    "./contract/publish-ops.v1": "./src/contract/publish-ops.v1.ts",
+    "./contract/publish.v1": "./src/contract/publish.v1.ts",
+    "./contract/schema-record.v1": "./src/contract/schema-record.v1.ts",
+    "./contract/schema-response.v1": "./src/contract/schema-response.v1.ts",
+    "./contract/server-managed": "./src/contract/server-managed.ts",
+    "./contract/tokens.v1": "./src/contract/tokens.v1.ts",
+    "./contract/update-patch.v1": "./src/contract/update-patch.v1.ts",
+    "./contract/wire-errors.v1": "./src/contract/wire-errors.v1.ts"
   },
   "files": [
     "src",
-    "!src/**/*.test.*"
+    "!src/**/*.test.*",
+    "!src/contract/wire-contract-v1.md"
   ],
   "publishConfig": {
     "access": "public"

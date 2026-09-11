@@ -541,7 +541,15 @@ const handlers: Record<string, Handler> = {
     const app = projectId ? SEED_APPS.find(a => a.projectId === projectId) : undefined
     if (!app) return { items: [] }
     const detail = applyAppMeta(app, state.appMetaOverrides.get(app.projectId))
-    const item: MyAppSummary = { ...detail, status: 'live', restricted: false }
+    // A seed app is published, so its last-touched time is its publish time —
+    // the dev host has no commit history to bump one from.
+    const item: MyAppSummary = {
+      ...detail,
+      status: 'live',
+      restricted: false,
+      updatedAt: detail.publishedAt,
+      pinned: false,
+    }
     return { items: [item] }
   },
 

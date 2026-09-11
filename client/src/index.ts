@@ -18,6 +18,24 @@ import { MythworkClient } from './client'
 // Type-only: erased at compile time, so the dev host module stays out of
 // production bundles (the value import below remains dynamic).
 import type { DevCapabilities } from './dev/host'
+import type { PageResult, SchemaRow } from '@mythwork/protocol/contract/db-client.interface'
+export type { ListQuery } from '@mythwork/protocol/contract/list-query.v1'
+// The names the generated per-app wrapper narrows the generic `sdk.db`
+// surface with: emitted code casts plain ids and per-entity bodies to these
+// contract types at the call boundary, so the SDK stays contract-typed and
+// the wrapper stays the typed face.
+export type { Id } from '@mythwork/protocol/contract/db-client.interface'
+export type { CreateBody } from '@mythwork/protocol/contract/create-body.v1'
+export type { PatchBody } from '@mythwork/protocol/contract/update-patch.v1'
+
+/**
+ * One page of `sdk.db.list` results, narrowed to a specific row type. Derived
+ * from the wire contract's own `PageResult` rather than restating its shape —
+ * `Page` with its default type argument is exactly `PageResult`. Per-entity
+ * narrowing (`Page<Task>`, etc.) is the generated wrapper's job; `sdk.db`
+ * itself knows no app's schema.
+ */
+export type Page<T = SchemaRow> = Omit<PageResult, 'rows'> & { rows: T[] }
 
 // Re-export the protocol so consumers get the wire spec (types, constants)
 // without a second dependency.
