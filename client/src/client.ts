@@ -420,6 +420,17 @@ export class MythworkClient {
      */
     signOut: (params: MethodParams<'kernel.signOut'> = {}, opts?: RequestOptions) =>
       this.request('kernel.signOut', params, opts),
+    /**
+     * End the user's platform session (sign out of myth.work), not just this
+     * app's identification to it. Wire: `kernel.platformSignOut`.
+     *
+     * Only an app granted `platformSignOut` may call it — the host rejects
+     * every other caller, so ordinary apps keep using {@link signOut}. Rejects
+     * too when the session could not be confirmed ended; it never resolves over
+     * a session that is still alive.
+     */
+    platformSignOut: (params: MethodParams<'kernel.platformSignOut'> = {}, opts?: RequestOptions) =>
+      this.request('kernel.platformSignOut', params, opts),
     /** Subscribe to authenticated-user changes. Wire event: `kernel.authChanged`. */
     onAuthChanged: (handler: EventHandler<'kernel.authChanged'>) =>
       this.subscribe('kernel.authChanged', handler),
@@ -984,9 +995,10 @@ export class MythworkClient {
      * gated-result.
      *
      * `engine: 'mythcode'` requires `projectId` and a first-party signed-in
-     * caller; every refusal is a gated-result decided with zero network. Pass
-     * `jobId` to re-attach to an existing build — the URL then arrives as a
-     * `preview` event during the first turn, succeed or fail.
+     * caller; every refusal is a gated-result decided with zero network. The
+     * host attaches to the project's recorded app by itself, so a `preview`
+     * event arrives as soon as it has — before any turn, and without sending
+     * one. `jobId` is only a hint for that, which a server record outranks.
      * Wire: `agent.create`.
      */
     create: (params: MethodParams<'agent.create'>, opts?: RequestOptions) =>

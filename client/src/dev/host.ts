@@ -164,6 +164,9 @@ interface DevState {
  *     `'allowlist'` (default) classifies against the shared
  *     `@mythwork/protocol` host table: warn-level asks via `confirm`,
  *     never-level refuses — the same split production's host dialog applies.
+ *   - `platformSignOut` (migration 0034) — `kernel.platformSignOut` resolves
+ *     (resetting to anonymous, as the dev host has no platform session apart
+ *     from the app's) instead of throwing 'not granted for this app'.
  */
 export interface DevCapabilities {
   platformPaidAi: boolean
@@ -171,6 +174,7 @@ export interface DevCapabilities {
   skipProfileConsent: boolean
   hidePlatformBadge: boolean
   outboundLinks: 'allowlist' | 'any'
+  platformSignOut: boolean
 }
 
 const DENY_ALL_CAPABILITIES: DevCapabilities = {
@@ -179,6 +183,7 @@ const DENY_ALL_CAPABILITIES: DevCapabilities = {
   skipProfileConsent: false,
   hidePlatformBadge: false,
   outboundLinks: 'allowlist',
+  platformSignOut: false,
 }
 
 /**
@@ -972,6 +977,16 @@ const handlers: Record<string, Handler> = {
     return state.user
   },
 
+  'kernel.platformSignOut'(_args, state) {
+    if (!state.capabilities.platformSignOut) {
+      throw new Error('kernel.platformSignOut: not granted for this app')
+    }
+    state.user = { kind: 'anonymous', userId: 'anonymous' }
+    state.profileFields = { bio: '', location: '', link: '' }
+    state.claimedHandle = undefined
+    return state.user
+  },
+
   // ── ai (mythwork-ai proxy) ───────────────────────────────────────────────────
   // Sign-in required (the worker 401s without a session) → anonymous THROWS, like
   // the real bridge for a NON-granted app. The `platformPaidAi` capability
@@ -1540,7 +1555,15 @@ export function createDevHost(opts?: {
 
     // Emit kernel.authChanged push after sign-in / sign-out (after the RPC
     // reply so subscribers receive the push after the promise resolves).
-    if (req.method === 'kernel.signIn' || req.method === 'kernel.signOut') {
+    // The new method is the only one whose push is conditional: it is the only
+    // one that can fail (an ungranted caller), and a kernel.authChanged saying
+    // "anonymous" after a refused sign-out would be a lie. signIn/signOut keep
+    // their existing unconditional push.
+    if (
+      req.method === 'kernel.signIn' ||
+      req.method === 'kernel.signOut' ||
+      (req.method === 'kernel.platformSignOut' && !response.error)
+    ) {
       const push: PushMessage = { type: 'kernel.authChanged', user: state.user }
       hostPort.postMessage(push)
     }

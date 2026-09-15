@@ -146,8 +146,11 @@ export type GatedResult = { ok: false; reason: AgentGatedReason }
  *   the user against it before minting an assertion.
  * - First-party caller AND a signed-in user; the anonymous first-party token
  *   does not buy a turn.
- * - `jobId` optional, attaching the session to an existing job; must name an app
- *   whose id is `projectId`.
+ * - `jobId` optional, and only ever a HINT: the host looks the project's recorded
+ *   job up itself and a server record outranks it, so a caller that has lost its
+ *   copy still edits the app instead of building a second one. It must name an
+ *   app whose id is `projectId`. Once the session has attached, a `preview` event
+ *   arrives on its own, before any turn.
  * - `projectId`/`jobId` are refused on the standard engine.
  */
 export interface AgentSessionOptions {
@@ -208,6 +211,62 @@ export type AgentEvent =
    * with it. Idempotent: point the frame at `url`, take `jobId` as current.
    */
   | { kind: 'preview'; url: string; jobId: string }
+  /**
+   * Where the build's push of its source tree to the project's commit plane got
+   * to. Mythcode engine only. `commitHead` is the CAS commit the project head
+   * now points at, and it lands AFTER `preview`, so a Publish affordance gates
+   * on `commitHead !== null && !pending` rather than reading a preview as
+   * ready-to-publish. An accepted turn re-sends the PREVIOUS head with
+   * `pending: true` (that head no longer builds the app being shown) and the
+   * new head follows with `pending: false` once the push lands. A session
+   * attaching to a job it did not start gets one from the job's own state, so a
+   * reopened project learns its head from the host. `error` is set when the
+   * push was rejected or never ran.
+   */
+  | {
+      kind: 'checkpoint'
+      jobId: string
+      commitHead: string | null
+      pending: boolean
+      error: string | null
+    }
+  /**
+   * Suggestions for the app being built: what it could be called, how it could
+   * look, and the shape it is taking. Mythcode engine only, and present only on
+   * jobs the host submits for them.
+   *
+   * PARTIAL AND REPEATED, like `preview`: sections arrive separately while the
+   * build runs, so a client MERGES what arrives and never treats an absent
+   * field as a cleared one.
+   *
+   * `shell` is the app's own layout and `sample` its own first copy, which is
+   * what lets a look be shown as that app rather than as an abstract swatch.
+   */
+  | {
+      kind: 'build-suggestions'
+      /** Candidate names, best first. */
+      names?: string[]
+      /** Presets mythcode will accept at `build.applyTheme`, in its order. */
+      themes?: {
+        id: string
+        label?: string
+        mode?: string
+        hue?: number
+        secondaryHue?: number
+        /** Stage 0's own pick for this app. At most one. */
+        recommended?: boolean
+      }[]
+      palette?: { primaryHue: number; secondaryHue: number; mood?: string }
+      /** Region roles, each with the child roles under it. */
+      shell?: { role: string; children?: { role: string; text?: string }[] }[]
+      sample?: {
+        title?: string
+        badge?: string
+        primary?: string
+        secondary?: string
+        row?: string
+      }
+    }
   | {
       kind: 'error'
       message: string
@@ -242,6 +301,13 @@ export type AgentEvent =
          * running, and a fresh session attached to it may find it.
          */
         | 'timeout'
+        /**
+         * The project has a recorded app that could not be reached — or the
+         * record itself could not be read. The turn posted nothing and built
+         * nothing, so nothing was spent and no app changed; the next message
+         * looks the record up again, so resending is the recovery.
+         */
+        | 'app_unreachable'
       /** Sanitized supporting text; today only `refused` carries one. */
       detail?: string
     }
@@ -724,6 +790,14 @@ export interface MethodMap {
    * user; a `kernel.authChanged` push reconfirms.
    */
   'kernel.signOut': { params: Record<string, never>; result: User }
+  /**
+   * End the user's PLATFORM session (myth.work sign-out), not just this app's
+   * identification to it. Only apps granted `platformSignOut` in their
+   * project_app_config may call it; any other caller is rejected before
+   * anything happens. Resolves with the anonymous user only once the session
+   * is confirmed ended, rejects otherwise; a `kernel.authChanged` push follows.
+   */
+  'kernel.platformSignOut': { params: Record<string, never>; result: User }
 
   // ── database.* (per-project relational data) ─────────────────────────────
   // Reuses the mythwork wire contract's own types rather than restating them —

@@ -225,6 +225,7 @@ the success shape) rather than throwing.
 | `kernel.getUser` | `{}` | `User` | Returns anonymous sentinel when signed out |
 | `kernel.signIn` | `{}` | `User` | Opens Google OAuth popup if needed; also fires `kernel.authChanged` push |
 | `kernel.signOut` | `{}` | `User` | Resolves optimistically; `kernel.authChanged` push reconfirms |
+| `kernel.platformSignOut` | `{}` | `User` | Ends the platform session; requires the `platformSignOut` grant; resolves only once confirmed, rejects otherwise |
 
 ### event.*
 

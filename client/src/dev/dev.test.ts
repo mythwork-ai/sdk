@@ -927,6 +927,34 @@ describe('kernel.signOut reverts identity', () => {
   })
 })
 
+describe('kernel.platformSignOut — grant-gated, like production', () => {
+  it('rejects without the platformSignOut grant and leaves the user signed in', async () => {
+    const sdk = makeClient()
+    await sdk.auth.signIn()
+    await expect(sdk.auth.platformSignOut()).rejects.toThrow(
+      'kernel.platformSignOut: not granted for this app',
+    )
+    expect((await sdk.auth.getUser()).kind).not.toBe('anonymous')
+    sdk.port.close()
+  })
+
+  it('signs out, and pushes kernel.authChanged, when granted', async () => {
+    const sdk = new MythworkClient(createDevHost({ capabilities: { platformSignOut: true } }))
+    await sdk.auth.signIn()
+    // signIn's own push can still be queued, so wait for the anonymous one.
+    const pushed = new Promise(resolve =>
+      sdk.auth.onAuthChanged(({ user }) => {
+        if (user.kind === 'anonymous') resolve(user)
+      }),
+    )
+    const user = await sdk.auth.platformSignOut()
+    expect(user).toEqual({ kind: 'anonymous', userId: 'anonymous' })
+    expect(await pushed).toEqual({ kind: 'anonymous', userId: 'anonymous' })
+    expect(await sdk.auth.getUser()).toEqual({ kind: 'anonymous', userId: 'anonymous' })
+    sdk.port.close()
+  })
+})
+
 describe('explore.addComment — reply shape + unknown parent', () => {
   let sdk: MythworkClient
 

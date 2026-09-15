@@ -264,7 +264,7 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.collab` | `collab.openRoom` |
 | `sdk.db` | `database.list`, `database.get`, `database.count`, `database.create`, `database.update`, `database.delete`, `database.schema` — an app never names a project, so these send no `projectId`. `sdk.db.for(projectId, options?)` returns the same seven methods bound to `projectId`, sent on every call; the IDE is the only caller allowed to name a project other than its own. `options.jobId` also rides along on every call, naming the job directly instead of relying on the host's live session registry — the IDE's own use, so its Data panel keeps working after a page reload wipes that registry |
 | `sdk.ydocs` (@internal) | `ydocs.append`, `ydocs.getAll`, `ydocs.snapshot`, `ydocs.clear` |
-| `sdk.auth` | `kernel.getUser`, `kernel.signIn`, `kernel.signOut`; event `kernel.authChanged` |
+| `sdk.auth` | `kernel.getUser`, `kernel.signIn`, `kernel.signOut`, `kernel.platformSignOut` (granted apps only); event `kernel.authChanged` |
 | `sdk.secrets` | `secrets.check`, `secrets.proxyFetch` |
 | `sdk.config` | `config.get` |
 | `sdk.event` | `event.sendBatch` |

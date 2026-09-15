@@ -34,6 +34,7 @@ describe('namespaced helper → wire method mapping', () => {
     ['auth.getUser', () => client.auth.getUser(), 'kernel.getUser', {}],
     ['auth.signIn', () => client.auth.signIn(), 'kernel.signIn', {}],
     ['auth.signOut', () => client.auth.signOut(), 'kernel.signOut', {}],
+    ['auth.platformSignOut', () => client.auth.platformSignOut(), 'kernel.platformSignOut', {}],
     ['git.log', () => client.git.log({ pid: 'p', depth: 5 }), 'fs.log', { pid: 'p', depth: 5 }],
     [
       'git.commit',
