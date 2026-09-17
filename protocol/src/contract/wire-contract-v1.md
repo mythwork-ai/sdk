@@ -40,6 +40,18 @@ substitute a row's id.
 Every response body is JSON, except where a route is listed as answering no
 body at all.
 
+A project has two databases behind this surface: the published
+application's, and the application still being built. A `dev` segment right
+after the project id, on any route below, addresses the second one instead
+of the first — `GET /projects/{projectId}/dev/entities/{entity}` reads the
+building application's own rows, exactly as `GET /projects/{projectId}/entities/{entity}`
+reads the published one's. Every one of the six data verbs exists in both
+forms, with the same body shapes and the same success codes on either; the
+schema resource does not split so evenly, and the section below says where
+it differs. Which credential may use the `dev` form, and what else differs
+about the two databases, is the subject of the sections on credentials and
+admission further down.
+
 ### The six data verbs
 
 | Verb | Method and path | Success | Body it answers |
@@ -72,17 +84,20 @@ no upsert, and no aggregate beyond `count`.
 | --- | --- | --- |
 | `GET /projects/{projectId}/schema` | 200 | the published schema |
 | `PUT /projects/{projectId}/schema` | 200 | what the publish applied |
-| `PUT /projects/{projectId}/schema/entities/{entity}` | 200 | what the publish applied |
+| `GET /projects/{projectId}/dev/schema` | 200 | the building application's own schema |
+| `PUT /projects/{projectId}/dev/schema` | 200 | what the write applied |
+| `PUT /projects/{projectId}/dev/schema/entities/{entity}` | 200 | what the write applied |
+| `DELETE /projects/{projectId}/dev/schema/entities/{entity}` | 204 | no body |
 
-The GET answers the registry version and the stored entities:
+A GET answers that database's own registry version and stored entities:
 
 ```json
 { "version": 3, "entities": { "task": { } } }
 ```
 
-`version` counts publishes. It is 0 on a database where nothing has been
-published yet, and afterwards it is the version the most recent publish
-wrote. It is not a format version.
+`version` counts writes to that database's registry. It is 0 where nothing
+has been written yet, and afterwards it is the version the most recent write
+produced. It is not a format version.
 
 Each entry under `entities` carries the entity's physical id, its
 description, its declared fields (each with a physical field id and its
@@ -90,11 +105,11 @@ full published definition), and its access rules. The exact shape, and a
 careful statement of what this body does and does not tell a client, is in
 `schema-response.v1.ts` beside this file.
 
-The first PUT replaces the whole schema. Its semantics are literally those
-of PUT: an entity or a field that is currently published and absent from
-the document is a deletion. The second PUT declares one entity and is
-additive only — it may create an entity or add fields, and anything else it
-would imply is refused.
+The whole-document PUT — on either path — replaces the whole schema. Its
+semantics are literally those of PUT: an entity or a field that is currently
+stored and absent from the document is a deletion. The by-entity PUT exists
+only on the `dev` path; it declares one entity and is additive only — it may
+create an entity or add fields, and anything else it would imply is refused.
 
 Both PUTs answer the same body on success:
 
@@ -103,15 +118,36 @@ Both PUTs answer the same body on success:
 ```
 
 `version` is the new registry version. The two counters say how many
-entity-level and field-level operations the publish carried out.
+entity-level and field-level operations the write carried out.
 
-Publish authority is the project owner's, and that is the engine's
-decision: a caller who is not the owner gets `PUBLISH_FORBIDDEN`, and so
-does an anonymous caller. Publishing is decided by what the caller is
-asking to do, not by where the caller came from. Which credentials reach
-the two publish routes at all is a separate question, answered by the
-section on which credential this surface accepts — and reaching one of
-them is not authority to publish.
+**The plain path's PUT is the publish, and publish authority is the project
+owner's** — that is the engine's decision: a caller who is not the owner gets
+`PUBLISH_FORBIDDEN`, and so does an anonymous caller. **The `dev` path's PUT
+asks no such question**: the building application's database assesses no
+access rules at all, so any caller admitted to that path may write its whole
+schema, exactly as they may write any row there. Which credentials reach
+each path at all is a separate question, answered by the section on
+credentials and admission below — and reaching a path is not, by itself,
+authority over what it does once reached.
+
+The `dev` path's DELETE drops one entity — its table and every row in it —
+reusing the same apply a schema write uses, so the stored schema record, the
+entity registry and the physical table all move together. It answers 204 on
+success. An entity name that database does not declare is answered 404 with
+`UNKNOWN_ENTITY`, the same not-found shape any other entity miss on this
+resource gets.
+
+The published application's database answers no by-entity PUT and no
+DELETE at all. A request that somehow reached one there is answered 404 with
+`UNKNOWN_PROJECT`, indistinguishable from a project that does not exist, and
+nothing on that database is touched.
+
+### Retired: the dev-instance wipe
+
+`DELETE /projects/{projectId}/dev-instance` is no longer part of this
+surface (ruling d-38). It had no external caller — the per-entity delete
+above is the one deletion route a client ever needed, and it replaces the
+one thing the wipe existed for.
 
 ### What answers before a request reaches the database
 
@@ -136,43 +172,51 @@ Errors raised in that front layer carry an empty `message` string. Errors
 raised by the database itself carry a full plain-English explanation. Both
 carry the same body shape, described further down.
 
-### What credential this surface accepts
+### What credential this surface accepts, and which database it reaches
 
-Three postures reach this surface, and which of a project's two databases
-a caller addresses follows from the credential rather than from the route.
+The ROUTE decides which of a project's two databases a request addresses —
+the `dev` segment reaches the building application's database, and its
+absence reaches the published one. What a credential decides is narrower:
+whether it may use the path it asked for at all, and, for a schema-level act
+(a schema write or the per-entity delete), whether it carries the scope
+value that database's own writes demand.
 
-**A token minted by the platform for this purpose is the only credential
-that reaches the application under construction.** Such a token may carry a
-claim naming the surface it acts for, and a token naming the builder
-surface — the application as it is being built — addresses that project's
-under-construction database. No other credential reaches that database, on
-any route and by any method. A minted token that names no surface addresses
-the published application's database instead, which is an ordinary posture
-rather than a malformed one.
+**A token minted by the platform for a build service is the only credential
+that reaches the `dev` path, and it is admitted there on any route and by
+any method.** It carries a `scope` claim naming the build operations it was
+minted for. A schema-level act on the `dev` path needs the value
+`schema:edit` in that claim; every other verb there asks the claim nothing
+at all — reaching the `dev` path is itself the authorization for a data verb
+or a schema read.
+
+**That same credential also reaches the plain path**, admitted there
+exactly as a sign-in session or anonymous traffic is. Its scope claim is
+read only for the one schema-level act the plain path serves, the
+whole-document publish, which needs `schema:publish`. A credential whose
+scope names neither value still reaches every data verb and every schema
+read on either path.
 
 **The browser sign-in session that authenticates the rest of this platform
-is accepted at the published database.** It is the same Bearer the browser
+is accepted only at the plain path.** It is the same Bearer the browser
 already sends this platform's other routes, verified the same way, and it
-names no surface, so it addresses the published application's database and
-can never address the one under construction. What it may then do with a
-row is decided per row by the entity's access rules, exactly as for any
-other identified caller.
+is refused the `dev` path outright, on any method or resource. What it may
+do at the plain path with a row is decided per row by the entity's access
+rules, exactly as for any other identified caller — except the publish,
+which it is refused there too: a session never publishes.
 
-**Presenting nothing is still legitimate.** A request with no credential
-is anonymous. That is the posture the users of a published application
-call under, and whether an anonymous caller may do anything is decided per
-row by the entity's access rules, as the rest of this document describes.
+**Presenting nothing is still legitimate, and only at the plain path.** A
+request with no credential is anonymous. That is the posture the users of a
+published application call under, and whether an anonymous caller may do
+anything is decided per row by the entity's access rules, as the rest of
+this document describes. Anonymous traffic is refused the `dev` path
+outright, the same as a session.
 
-**Publishing is not a fourth posture.** The two publish routes are admitted
-on the credentials above, and a minted token carrying an operations claim
-reaches them only when that claim names the schema operation: a minted
-token that names no operation is refused a publish while keeping its schema
-reads. Publish authority itself is decided inside the database, against the
-owner id recorded when the database was created, so being admitted at a
-publish route settles nothing about whether the publish applies.
-
-Nothing in this document is reachable outside local development — see
-below.
+**Publishing is not a fourth posture.** The publish is the plain path's one
+schema-level act, admitted on the credentials above under the
+`schema:publish` scope. Publish authority itself is decided inside the
+database, against the owner id recorded when the database was created, so
+being admitted at the publish route settles nothing about whether the
+publish applies.
 
 ### What the project id in the path proves, and what it does not
 
@@ -232,32 +276,26 @@ caller identity on this surface is a verified passthrough of whatever
 credential the door accepts, and nothing anywhere decides who may reach a
 project's database at all.
 
-That is why the surface is not reachable outside local development. A
-single literal in the route layer keeps it shut, and staging and production
-answer 404 for every path in this document exactly as if the feature did
-not exist. The absent admission gate is therefore a gap the code documents
-and switches the surface off for, rather than a decision that no such gate
-is needed.
-
 Publishing is the one exception, and it is decided in the same place rather
 than in front of it. `PUT /projects/{projectId}/schema` is the project
 owner's act alone: the database holds the owner's id, recorded when the
 database was created, and compares the caller against it. That comparison
 is made inside the database, against its own record — not against the
-platform's membership records. It is the operation being asked for that
-sends a request down that path, and nothing else about the caller. Which
-credentials reach the publish routes is the credential section's question,
-and its answer does not change this one: being admitted at the door is not
-publish authority.
+platform's membership records. It is the route and the operation being
+asked for that send a request down that path, and nothing else about the
+caller. Which credentials reach it at all is the credential section's
+question, and its answer does not change this one: being admitted at the
+door is not publish authority.
 
 ### The admission outcomes
 
-The sections above say which credential this surface accepts. This one says
-what a caller is answered, credential by credential, by the door standing in
-front of the database. Every outcome below is wire-visible: a status, one of
-the codes in the vocabulary further down, and the front-layer body shape —
-the same four members, with `message` an empty string. None of these outcomes
-introduces a code or a status of its own.
+The sections above say which credential this surface accepts, and which
+database the route it used addresses. This one says what a caller is
+answered, credential by credential, by the door standing in front of the
+database. Every outcome below is wire-visible: a status, one of the codes in
+the vocabulary further down, and the front-layer body shape — the same four
+members, with `message` an empty string. None of these outcomes introduces a
+code or a status of its own.
 
 **A malformed or unverifiable credential is 401 with `UNAUTHORIZED`.** That
 covers a Bearer header carrying something that is not a token this platform
@@ -267,113 +305,78 @@ apart on the wire. None of them is quietly downgraded to the anonymous
 posture, so a 401 here means obtain a fresh token and retry — not drop the
 header and call anonymously.
 
-**No credential at all is anonymous, and anonymous reaches the published
-database only.** Presenting nothing stays legitimate, as the credential
-section above says, and it is the one thing this door defaults. An anonymous
-request addresses the published application's database, and no request a
-client can write makes an anonymous call address anything else. What an
-anonymous caller may then do with a row is the entity's own access rules,
-decided inside the database.
+**No credential at all is anonymous, and anonymous is refused the `dev`
+path outright, reaching the published database only.** Presenting nothing
+stays legitimate, as the credential section above says, and it is the one
+thing this door defaults on the plain path. No request a client can write
+makes an anonymous call reach the `dev` path's database. What an anonymous
+caller may then do with a row on the plain path is the entity's own access
+rules, decided inside the database.
 
-**A verified token that names no surface addresses the published database,
-and that is not an error.** A minted token may carry a claim naming the
-surface it was minted for. Most credentials carry none, which is the ordinary
-case rather than a malformed one: a token without that claim addresses the
-published application's database, exactly as a sign-in session and an
-anonymous call do. Only one mint writes the claim at all, and it writes one
-value, naming the application under construction.
-
-**An unrecognised surface makes the whole token unverifiable, so it is 401
-with `UNAUTHORIZED`.** A claim carrying a value this platform does not
-recognise is not treated as a token that named no surface; verification
-refuses the token outright, and the answer is the same 401 any other
-unverifiable credential gets. That is what keeps a forged instance selector
-from being read as absence and routed to a default.
-
-**Which database a call reaches is decided by that claim alone.** A project
-has a database for the application under construction and a database for the
-published application. The routes in this document address both, and the
-verified surface claim is the only thing that chooses between them: the one
-value that claim can carry reaches the database for the application under
-construction, and every other credential — a token without the claim, a
-sign-in session, no credential at all — reaches the published one. No path
-segment selects one, no header selects one, and no query parameter selects
-one. A header a client sends that looks like a selector has no effect at all,
-because the request the database receives is built fresh rather than
-forwarded. A client changes which database it is talking to by holding a
-different token, and in no other way.
-
-**A verified token used outside what it covers is 403 with `SCOPE_DENIED`.**
-Three shapes reach that answer:
+**A verified token used outside what its route or its scope covers is 403
+with `SCOPE_DENIED`.** Four shapes reach that answer:
 
 - a token minted for one project, presented on a path naming a different one;
-- a build credential — a token carrying the operations claim — presented on
-  the schema resource without the schema operation in that claim, or
-  presented on a data resource while it addresses the published database,
-  which is what a build credential carrying no surface claim does. A build
-  credential whose surface names the application under construction does
-  reach the data resources, and needs no operations value naming them: that
-  database assesses no row access rules, so being admitted to it is itself
-  the authorization, and an operations value would narrow nothing that is
-  being assessed;
-- a data credential — a token carrying no operations claim — reaching for the
-  publish verb, meaning a PUT on the schema resource. Schema reads stay open
-  to it, because an application has to be able to read its own shape.
+- a platform sign-in session, or no credential at all, presented on the
+  `dev` path — that path is reachable only by a token this platform minted
+  for a build service;
+- a schema-level act — a schema write or the per-entity delete — missing the
+  scope value its path demands (`schema:edit` on `dev`, `schema:publish` on
+  the plain path's publish); the by-entity write and the delete are refused
+  on the plain path the same way, for every credential, whether or not it
+  verifies — the plain path serves no schema-level act but the
+  whole-document publish, so those two shapes never reach a credential check
+  at all;
+- a data verb or a schema read asks none of this: reaching a database at all,
+  on either path, is itself the authorization for those — the `dev`
+  database assesses no row access rules, so admitting a caller to it is the
+  whole of what decides what they may do with a row there.
 
 `SCOPE_DENIED` is a code both this door and the database itself can answer;
 the door's are the ones whose `message` is empty.
 
-**The platform's browser sign-in session is admitted, at the published
-database.** It is the same session the browser already sends every other
-route on this platform, verified the same way, and it is accepted here on
-every route in this document and by every method. It names no surface, so it
-addresses the published application's database like any other credential that
-names none, and it can never reach the database for the application under
-construction. Being admitted grants nothing by itself: the identity the
-session names is passed to the database, and what that identity may do with a
-row is the entity's own access rules, assessed there.
+**The platform's browser sign-in session is admitted at the plain path,
+never at `dev`.** It is the same session the browser already sends every
+other route on this platform, verified the same way, and it is accepted on
+every route and method the plain path serves. Being admitted grants nothing
+by itself: the identity the session names is passed to the database, and
+what that identity may do with a row is the entity's own access rules,
+assessed there — except the publish, which a session is refused at the
+door, on either of the schema resource's shapes.
 
 **The checks above are the whole list, and a caller's standing on the
-project is not among them.** Once a token verifies and its surface and
-operations claims are in order, the caller is admitted. The door does not ask
+project is not among them.** Once a token verifies and, for a schema-level
+act, its scope is in order, the caller is admitted. The door does not ask
 the platform's membership records for the caller's role on the project the
 path names, and it does not ask whether the caller may access that project at
 all — it never consults those records. What a caller may do with a row is the
 entity's own access rules, assessed inside the database: the published
-application's database enforces them, and the under-construction database
-assesses none, so being admitted to that one is itself the authorization. The
-question of who may hold a token for a project is settled where the token is
-minted, not here.
+application's database enforces them, and the `dev` database assesses none,
+so being admitted to that one is itself the authorization. The question of
+who may hold a token for a project is settled where the token is minted, not
+here.
 
 **A forged project id is answered 404, and is answered first.** The integrity
 check on the path segment runs before any credential work, so an invented id
 never reaches these credential checks. It gets the same status, the same
 `UNKNOWN_PROJECT` code, and the same empty body as a project with no
-database, and as a token whose surface names a database that is not reachable
-here. One consequence is worth stating plainly, because it is the single place
-these outcomes are not uniform: a caller who holds a real token for a project
-of their own and probes a different real project id is answered 403 rather
-than 404, which tells them that id was minted by this platform. It applies
-only to ids the caller already holds, since a guessed id fails its integrity
-check and 404s before anything else, and the 403 body carries nothing further
-— not which project, not whose, not why. The asymmetry is deliberate: a build
-service presenting the wrong token has to see a permission error it can act
-on rather than a project that appears not to exist.
+database. One consequence is worth stating plainly, because it is the single
+place these outcomes are not uniform: a caller who holds a real token for a
+project of their own and probes a different real project id is answered 403
+rather than 404, which tells them that id was minted by this platform. It
+applies only to ids the caller already holds, since a guessed id fails its
+integrity check and 404s before anything else, and the 403 body carries
+nothing further — not which project, not whose, not why. The asymmetry is
+deliberate: a build service presenting the wrong token has to see a
+permission error it can act on rather than a project that appears not to
+exist.
 
 **The order these run in is part of what a client sees.** Declared body
-length first, then the project id's integrity check, then the credential's
-verification, then the routing decision the surface claim settles, then the
-operations-claim lane. That is the end of the order — nothing after the
-operations-claim lane looks the caller up anywhere. Note that the routing
-step refuses nothing: every credential routes somewhere, and the refusals
-sit on either side of it.
-
-**The under-construction database is not reachable outside local
-development.** A token whose surface names that database is answered 404 with
-`UNKNOWN_PROJECT` wherever that database does not exist — the same posture
-again, indistinguishable from a project that does not exist. With the literal
-that switches this whole surface off outside local development, that means no
-deployed stage serves the under-construction database to any client today.
+length first, then the project id's integrity check, then the route's own
+shape (a schema-level act the plain path does not serve is refused before a
+credential is even looked at), then the credential's verification, then the
+scope check for a schema-level act. That is the end of the order — nothing
+after it looks the caller up anywhere.
 
 **What this door never does.** Nothing in the order above looks the caller
 up in the platform's membership records, and no outcome above depends on such

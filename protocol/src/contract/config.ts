@@ -150,12 +150,12 @@ export const config = {
   // a local stack wants minutes where production wants days. PERPETUITY:
   // permanent, but the value is a guess until we watch real building
   // sessions.
-  // Sets how long a project's dev database survives without use before it
-  // deletes itself, which is what keeps builders from mistaking dev data for
-  // storage that will still be there tomorrow: publishing is what makes data
-  // durable. It stays config because the window is a behavioural judgement
-  // about how people build. Forty-eight hours in milliseconds spans a weekend
-  // gap in a building session without keeping abandoned projects alive
-  // indefinitely.
-  devIdleLifetimeMs: 172_800_000,
+  // Bounds how long a project's dev database survives without use before the
+  // idle alarm deletes it, and it arms only on the dev behavior, since a prod
+  // instance carries no alarm at all. The instance's ordinary lifetime is
+  // pinned to the mythwork job that owns it, one to two days, so this window
+  // only exists to catch the case where that job's own deletion never
+  // arrives. Seven days in milliseconds sits comfortably past the longest job
+  // without keeping an abandoned project's data alive indefinitely.
+  devIdleLifetimeMs: 604_800_000,
 } as const
