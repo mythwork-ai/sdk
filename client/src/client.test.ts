@@ -274,6 +274,43 @@ describe('auth.signIn / auth.signOut interactive-timeout budget', () => {
     await expect(p).rejects.toThrow(/timed out after 120000ms/)
   })
 
+  it('project.open does not time out at the generic 30s default', async () => {
+    // An open materializes the project's tree when this device does not hold
+    // it — a serial walk, one request per object. The generic budget would
+    // fail the caller mid-walk while the host kept working.
+    vi.useFakeTimers()
+    const p = client.project.open({ pid: 'p-open-1234567' })
+    const settled = vi.fn()
+    p.catch(settled)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
+    expect(settled).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERACTIVE_TIMEOUT_MS - DEFAULT_REQUEST_TIMEOUT_MS)
+    await expect(p).rejects.toThrow(/timed out after 120000ms/)
+  })
+
+  it('project.open honors an explicit timeout override, and a present-but-unset one falls back', async () => {
+    vi.useFakeTimers()
+    const explicit = client.project.open({ pid: 'p-open-1234567' }, { timeoutMs: 5000 })
+    const explicitAssertion = expect(explicit).rejects.toThrow(/timed out after 5000ms/)
+    await vi.advanceTimersByTimeAsync(5000)
+    await explicitAssertion
+
+    const spread = client.project.open({ pid: 'p-open-7654321' }, { timeoutMs: undefined })
+    const spreadAssertion = expect(spread).rejects.toThrow(/timed out after 120000ms/)
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERACTIVE_TIMEOUT_MS)
+    await spreadAssertion
+  })
+
+  it('project.close still uses the generic 30s default', async () => {
+    vi.useFakeTimers()
+    const p = client.project.close({ pid: 'p-close-1234567' })
+    const assertion = expect(p).rejects.toThrow(/timed out after 30000ms/)
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
+    await assertion
+  })
+
   it('auth.signOut uses the generic 30s default, not the 120s interactive budget', async () => {
     vi.useFakeTimers()
     const p = client.auth.signOut()

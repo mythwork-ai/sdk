@@ -216,7 +216,7 @@ the success shape) rather than throwing.
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
-| `publish.run` | `{ pid: string; shortName: string }` | `{ canonical: string; alias: string \| null }` | Auth-gated; emits `publish.progress` pushes; `alias` is `null` when none advanced |
+| `publish.run` | `{ pid: string; shortName: string; messageCount?: number }` | `{ canonical: string; alias: string \| null }` | Auth-gated; emits `publish.progress` pushes; `alias` is `null` when none advanced; `messageCount` is analytics-only passthrough, never affects what is published, and a bad value never fails the publish |
 
 ### kernel.*
 

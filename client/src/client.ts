@@ -130,9 +130,28 @@ export class MythworkClient {
     /** Create a new local-first project. Wire: `project.create`. */
     create: (params: MethodParams<'project.create'>, opts?: RequestOptions) =>
       this.request('project.create', params, opts),
-    /** Open an existing project by id. Wire: `project.open`. */
+    /**
+     * Open an existing project by id. Wire: `project.open`.
+     *
+     * Budgeted with {@link DEFAULT_INTERACTIVE_TIMEOUT_MS} rather than the
+     * generic 30s default, for the same reason `auth.signIn` is: this is no
+     * longer a metadata call. When the device does not already hold the
+     * project's tree, the host materializes it from the server HEAD before
+     * resolving — a serial walk of every object in the project, one request
+     * per object. A 120-file project measures 131 objects; at one network
+     * round trip each, a large project can pass 30s on an ordinary connection,
+     * and the generic default would hand the caller a hard failure while the
+     * materialization carried on in the background.
+     *
+     * `opts?.timeoutMs ?? DEFAULT` (not `{ timeoutMs: DEFAULT, ...opts }`) so a
+     * caller spreading a shared options bag with `timeoutMs` present-but-unset
+     * still gets this budget — see the regression test in client.test.ts.
+     */
     open: (params: MethodParams<'project.open'>, opts?: RequestOptions) =>
-      this.request('project.open', params, opts),
+      this.request('project.open', params, {
+        ...opts,
+        timeoutMs: opts?.timeoutMs ?? DEFAULT_INTERACTIVE_TIMEOUT_MS,
+      }),
     /** Close an open project. Wire: `project.close`. */
     close: (params: MethodParams<'project.close'>, opts?: RequestOptions) =>
       this.request('project.close', params, opts),

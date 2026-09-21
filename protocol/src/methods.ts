@@ -405,15 +405,27 @@ export interface MethodMap {
   'project.open': { params: { pid: string }; result: ProjectInfo }
   /** Close an open project, draining its resources and registry tracking entry. */
   'project.close': { params: { pid: string }; result: Ok }
-  /** List the ids of all projects this device knows about. */
+  /**
+   * List the signed-in account's project ids: the ones this device has
+   * materialized, plus the ones the server listed for the user. A listed id is
+   * NOT a promise that its bytes are on disk — opening it materializes it.
+   * Signed out, this is the device's own projects alone.
+   */
   'project.list': { params: Record<string, never>; result: { pids: string[] } }
   /** Permanently delete a project's local data. */
   'project.delete': { params: { pid: string }; result: Ok }
-  /** Rename a project (updates the on-disk config + name cache). */
+  /**
+   * Rename a project: writes the on-disk config + name cache, LOCAL ONLY. It
+   * does not update the server's `display_name`, which is what
+   * {@link MethodMap['project.list']}'s listing and `explore.myApps` title
+   * from — a caller that wants the rename to reach those must also call
+   * `explore.updateAppMeta`.
+   */
   'project.rename': { params: { pid: string; newName: string }; result: Ok }
   /**
-   * Read a single project's display name (cached). `null` means the config
-   * isn't on disk yet (e.g. a pull-on-login materialization in flight).
+   * Read a single project's display name (cached): the project's own
+   * package.json when this device holds it, otherwise the display name the
+   * server listed. `null` means neither knows one.
    */
   'project.getName': { params: { pid: string }; result: { name: string | null } }
   /** Batched {@link MethodMap['project.getName']} — one round-trip for a list. */
@@ -769,7 +781,17 @@ export interface MethodMap {
    * reads (pull / eject) stayed closed for this tree; republishing retries it.
    */
   'publish.run': {
-    params: { pid: string; shortName: string }
+    params: {
+      pid: string
+      shortName: string
+      /**
+       * Accepted maker turns behind this publication, for analytics only.
+       * Optional, and ignored unless it is a non-negative integer the publish
+       * worker is willing to vouch for. It never affects what is published, and
+       * a bad value never fails the publish.
+       */
+      messageCount?: number
+    }
     result: { canonical: string; alias: string | null; possession: PossessionOutcome }
   }
 
