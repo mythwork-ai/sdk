@@ -47,6 +47,10 @@ import {
   isLocalOutbound,
   parseAppName,
   parseAppTheme,
+  parseJobRequestMethod,
+  parseJobRequestQuery,
+  parseJobRequestTimeout,
+  parseJobRequestType,
 } from '@mythwork/protocol'
 import type { AgentEvent, PushMessage, RpcRequest, RpcResponse, User } from '@mythwork/protocol'
 import type {
@@ -1125,10 +1129,11 @@ const handlers: Record<string, Handler> = {
   // ── build.* — there is no renderer in the dev host ──────────────────────
   //
   // These act on the app a mythcode agent session is running, and the dev host
-  // has neither (it refuses `engine: 'mythcode'` — see `agent.create`), so both
-  // answer `unavailable`: the same shape production gives when the renderer
-  // cannot be reached. Validation still runs, so a missing session id or a
-  // malformed theme or name fails here exactly as it would in the browser.
+  // has neither (it refuses `engine: 'mythcode'` — see `agent.create`), so all
+  // three answer `unavailable`: the same shape production gives when the
+  // renderer cannot be reached. Validation still runs, so a missing session id,
+  // a malformed theme or name, or a route a request may not name fails here
+  // exactly as it would in the browser.
   'build.applyTheme'(args) {
     requireDevBuildSession('build.applyTheme', args)
     if (parseAppTheme(args['theme']) === null) throw new Error('build.applyTheme: theme invalid')
@@ -1139,6 +1144,20 @@ const handlers: Record<string, Handler> = {
     requireDevBuildSession('build.setTitle', args)
     if (parseAppName(args['name']) === null) throw new Error('build.setTitle: name required')
     return { applied: false, reason: 'unavailable' }
+  },
+
+  'build.request'(args) {
+    requireDevBuildSession('build.request', args)
+    if (parseJobRequestType(args['type']) === null) throw new Error('build.request: type invalid')
+    if (parseJobRequestMethod(args['method']) === null) {
+      throw new Error('build.request: method invalid')
+    }
+    if (parseJobRequestQuery(args['query']) === null)
+      throw new Error('build.request: query invalid')
+    if (parseJobRequestTimeout(args['timeoutMs']) === null) {
+      throw new Error('build.request: timeoutMs invalid')
+    }
+    return { ok: false, reason: 'unavailable' }
   },
 
   // ── fs (shared store; writes push fs.changed to other clients) ───────────────

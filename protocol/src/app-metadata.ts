@@ -3,7 +3,7 @@
 // part of the contract, not of one implementation of it, so the real host frame
 // and the dev host refuse exactly the same things. See PR #859.
 
-import type { AppTheme } from './methods'
+import type { AppTheme, BuildRequestMethod } from './methods'
 
 /**
  * Every style id an {@link AppTheme} may name: mythcode's eight builtin presets,
@@ -77,6 +77,119 @@ export function parseAppName(value: unknown): string | null {
   const name = value.trim()
   if (!name || name.length > APP_NAME_MAX_CHARS) return null
   return name
+}
+
+/** Longest `type` a {@link MethodMap['build.request']} may name, in characters. */
+export const JOB_REQUEST_TYPE_MAX_CHARS = 200
+
+/** Every character a `build.request` `type` may contain. */
+const JOB_REQUEST_TYPE_CHARS = /^[A-Za-z0-9._~/-]+$/
+
+/**
+ * Validate a `build.request` `type` into the path segments that get appended to
+ * the session's OWN job, or `null`.
+ *
+ * The caller names only what comes after `/jobs/{id}/`, and this is the whole
+ * defence for that: the job id and the base URL are the host's, so a `type` that
+ * could climb out of the job's prefix, or carry its own query, fragment, scheme
+ * or authority, would reach a route the caller was never granted. Rejected
+ * rather than escaped, because every legal route mythcode publishes is already
+ * within this alphabet — `history/restore` is the shape that needs the slash.
+ *
+ * `%` is not in the alphabet either: a percent-escape would otherwise let `%2e%2e`
+ * become `..` at whichever hop decodes it first.
+ */
+export function parseJobRequestType(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  if (value === '' || value.length > JOB_REQUEST_TYPE_MAX_CHARS) return null
+  if (!JOB_REQUEST_TYPE_CHARS.test(value)) return null
+  const segments = value.split('/')
+  for (const segment of segments) {
+    if (segment === '' || segment === '.' || segment === '..') return null
+  }
+  return value
+}
+
+/** Every HTTP method a `build.request` may use. */
+export const JOB_REQUEST_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
+
+/**
+ * Validate a `build.request` `method`, defaulting an absent one to `POST` (the
+ * method every control route mythcode publishes today takes). Returns `null`
+ * for anything else, including a lower-case spelling — the value goes straight
+ * into `fetch`, so it is a fixed list, not a normalisation.
+ */
+export function parseJobRequestMethod(value: unknown): BuildRequestMethod | null {
+  if (value === undefined) return 'POST'
+  if (typeof value !== 'string') return null
+  return (JOB_REQUEST_METHODS as readonly string[]).includes(value)
+    ? (value as BuildRequestMethod)
+    : null
+}
+
+/** Most query parameters a `build.request` may carry, and their total size. */
+export const JOB_REQUEST_QUERY_MAX_PARAMS = 32
+export const JOB_REQUEST_QUERY_MAX_CHARS = 2048
+
+/**
+ * Validate a `build.request` `query` into the pairs the host will encode, or
+ * `null` for an invalid one; an absent query is the empty set. Values are NOT
+ * restricted in alphabet: the host builds the query string with
+ * `URLSearchParams`, never by concatenation, so an `&` or a `#` in a value is
+ * escaped rather than smuggled. Bounded only so one call cannot build an
+ * unreasonable URL.
+ */
+export function parseJobRequestQuery(value: unknown): Record<string, string> | null {
+  if (value === undefined) return {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const entries = Object.entries(value as Record<string, unknown>)
+  if (entries.length > JOB_REQUEST_QUERY_MAX_PARAMS) return null
+  let size = 0
+  const query: Record<string, string> = {}
+  for (const [key, v] of entries) {
+    if (key === '' || typeof v !== 'string') return null
+    size += key.length + v.length
+    if (size > JOB_REQUEST_QUERY_MAX_CHARS) return null
+    query[key] = v
+  }
+  return query
+}
+
+/**
+ * How long a `build.request` waits for its answer when the caller says nothing,
+ * and the longest it may be asked to wait.
+ *
+ * The default is for an ordinary control route, which answers at once. The
+ * maximum is for the other shape these routes take: one HELD open until the
+ * thing asked for exists — a name or a theme the build has not suggested yet —
+ * which is how an engine-to-client notification is delivered here without a
+ * second push channel. Five minutes, because a held request that outlives a
+ * whole build stops being a wait and starts being a leak, and asking again is
+ * one line for the caller.
+ */
+export const JOB_REQUEST_DEFAULT_TIMEOUT_MS = 30_000
+export const JOB_REQUEST_MAX_TIMEOUT_MS = 300_000
+
+/**
+ * How much longer than `timeoutMs` the SDK gives the RPC round trip before its
+ * own deadline fires. The host's timeout is the one that should decide a held
+ * request, because it produces a RESULT the caller can act on; the transport's
+ * produces a thrown error and a cancel. Five seconds is room for the postMessage
+ * hop and the reply, not for another wait.
+ */
+export const JOB_REQUEST_REPLY_MARGIN_MS = 5_000
+
+/**
+ * Validate a `build.request` `timeoutMs`, defaulting an absent one. Whole
+ * milliseconds, at least one, no more than {@link JOB_REQUEST_MAX_TIMEOUT_MS};
+ * `null` for anything else, including a larger number — a caller asking to wait
+ * longer than the cap is told so rather than quietly held to the cap.
+ */
+export function parseJobRequestTimeout(value: unknown): number | null {
+  if (value === undefined) return JOB_REQUEST_DEFAULT_TIMEOUT_MS
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null
+  if (value < 1 || value > JOB_REQUEST_MAX_TIMEOUT_MS) return null
+  return value
 }
 
 /**

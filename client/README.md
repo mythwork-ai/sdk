@@ -110,6 +110,13 @@ await sdk.explore.rate({ projectId: app.projectId, stars: 5 })
 // older host. Only a caller abort (AbortError) and a non-cloneable batch item
 // (DataCloneError — a programmer error) propagate.
 await sdk.event.sendBatch({ batch: [{ name: 'page:view' }] })
+
+// One result is worth reading: a batch carrying a `maker_report` item (a bug
+// report the app's maker filed about the app) sent from a signed-out browser
+// resolves `{ ok: true, forwarded: false, reason: 'sign_in_required' }`. The
+// report was stored but reached nobody — prompt for sign-in, don't say "Sent."
+const res = await sdk.event.sendBatch({ batch: [makerReport] })
+if ('forwarded' in res && !res.forwarded) promptSignIn()
 ```
 
 ### Subscribe to file changes
@@ -258,7 +265,7 @@ strings internally. Legacy strings are never exposed to application code.
 | Client namespace | Wire methods / events covered |
 |---|---|
 | `sdk.project` | `project.*` (incl. `project.remix`), `publish.run` (as `sdk.project.publish`) |
-| `sdk.build` | `build.applyTheme`, `build.setTitle` — restyle and set the title of the app a `sdk.agent` mythcode session is running |
+| `sdk.build` | `build.applyTheme`, `build.setTitle` — restyle and set the title of the app a `sdk.agent` mythcode session is running; `build.request` — the generic form of those two, sending one typed request to any of that job's other routes and returning its answer |
 | `sdk.fs` | `fs.read`, `fs.write`, `fs.list`, `fs.exists`, `fs.rename`, `fs.delete`; event `fs.changed` |
 | `sdk.git` | `fs.commit`, `fs.log`, `fs.showVersion`, `fs.diff`, `fs.checkout`, `fs.head`, `fs.hasUncommittedChanges`, `fs.commitTree`, `fs.deleteCommit`, `fs.editCommitMessage`, `fs.flushDirty` |
 | `sdk.collab` | `collab.openRoom` |

@@ -130,10 +130,23 @@ is running, addressed by that session's `sessionId`. Nothing is stored, and a
 change the running app cannot take yet is held by the host and applied when it
 can.
 
+`build.request` is the generic form of those two, for the rest of the routes
+mythcode publishes under a job — style groups, element style and text, history,
+the database proxy — so a new one of those needs no new wire method. The SDK
+does not interpret its `body` or its answer: that contract belongs to mythcode
+and the app making the call. `type` names the route under the session's OWN job
+and is validated as a relative path — alphabet `[A-Za-z0-9._~/-]`, no empty, `.`
+or `..` segment — so it cannot leave that job; `query` is encoded by the host
+rather than concatenated, and neither the job id nor the build server's URL is
+ever the caller's to choose. A route may HOLD the request until it has something
+to say, which is how mythcode notifies the caller of something without a second
+push channel; `timeoutMs` bounds that wait (default 30 s, maximum 5 min).
+
 | Method | Params | Result | Notes |
 |---|---|---|---|
 | `build.applyTheme` | `{ sessionId: string; theme: AppTheme }` | `BuildApplyResult` | Restyles the running app. First-party, signed-in, and a session this app created; a 400 throws `build.applyTheme failed: invalid` |
 | `build.setTitle` | `{ sessionId: string; name: string }` | `BuildApplyResult` | Sets the running app's title; `name` trimmed, non-empty, max 200 chars |
+| `build.request` | `{ sessionId: string; type: string; method?: BuildRequestMethod; query?: Record<string, string>; body?: unknown; timeoutMs?: number }` | `BuildRequestResult` | Same gates as the two above. `{ ok: true, status, body }` for any success; `{ ok: false, reason }` otherwise (`pending`, `busy`, `not_ready`, `evicted`, `unavailable`, `refused` for another 4xx, `unsupported` for an answer past the 1 MiB cap or in a content type it cannot carry, `timeout` when the wait elapses). An unusable `type`, `method`, `query` or `timeoutMs` throws |
 
 ### fs.* — file operations
 
@@ -235,7 +248,7 @@ supply or spoof attribution.
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
-| `event.sendBatch` | `{ batch: Record<string, unknown>[] }` | `Ok` | Best-effort: the host forwards the batch server-side and always resolves `Ok`, even if the forward fails. Caps (server-enforced): `batch` ≤ 100 items; each item a JSON object whose serialization is ≤ 8KB of UTF-8 bytes — a violating item is dropped and counted server-side, never fatal to the rest of the batch |
+| `event.sendBatch` | `{ batch: Record<string, unknown>[] }` | `SendBatchResult` | Best-effort: the host forwards the batch server-side and always resolves, even if the forward fails. Caps (server-enforced): `batch` ≤ 100 items; each item a JSON object whose serialization is ≤ 8KB of UTF-8 bytes — a violating item is dropped and counted server-side, never fatal to the rest of the batch. The result is `Ok` except for one case: a batch carrying a `maker_report` item sent with no signed-in session resolves `{ ok: true, forwarded: false, reason: 'sign_in_required' }` — the report was stored but reached nobody, so ask the person to sign in and file again rather than reporting it as sent |
 
 ### database.* — per-project relational data
 

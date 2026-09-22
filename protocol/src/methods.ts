@@ -29,6 +29,7 @@ import type {
   ProjectConfig,
   ProjectInfo,
   RoomDescriptor,
+  SendBatchResult,
   SharedAppSummary,
   SharedStack,
   SpotlightItem,
@@ -382,6 +383,58 @@ export type BuildApplyReason = 'pending' | 'busy' | 'not_ready' | 'evicted' | 'u
 /** What a `build.*` call did. Nothing is stored, so a refusal always says why. */
 export type BuildApplyResult = { applied: true } | { applied: false; reason: BuildApplyReason }
 
+/** Every HTTP method {@link MethodMap['build.request']} may use. */
+export type BuildRequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
+/**
+ * Why a `build.request` carried no answer. The five {@link BuildApplyReason}
+ * values mean what they mean there — `pending` no app yet, `busy` a turn owns
+ * it, `not_ready` no files yet, `evicted` reopened under a new job,
+ * `unavailable` the build server did not answer — and NONE of them is held and
+ * retried the way a theme or a title is: a generic request is not necessarily
+ * idempotent, so the caller decides whether to send it again. Two more:
+ *
+ * - `refused`     — mythcode answered, with a 4xx that is none of the above:
+ *   the body or the route is wrong for this job. The payload contract belongs
+ *   to mythcode and its callers, so this is reported rather than thrown.
+ * - `unsupported` — mythcode answered, and the answer cannot come through this
+ *   method: past the 1 MiB cap, or a content type it does not carry (it carries
+ *   JSON and text; binary routes such as `screenshot.png` are not reachable
+ *   through it).
+ * - `timeout`     — `timeoutMs` elapsed with no answer. The request was
+ *   abandoned, not cancelled at mythcode's end; asking again is the recovery,
+ *   and is the normal way to keep a HELD request open.
+ *
+ * An unusable `type`, `method` or `query` is NOT in here: it never reaches
+ * mythcode, and rejects the way a malformed theme or title does — as a thrown
+ * error, the caller's own bug rather than a fact about the moment.
+ */
+export type BuildRequestReason = BuildApplyReason | 'refused' | 'unsupported' | 'timeout'
+
+/**
+ * What one {@link MethodMap['build.request']} settled to. `status` is the HTTP
+ * status mythcode answered with, and `body` is its parsed answer — `unknown` to
+ * the SDK by design, and typed by the caller, which shares the contract for
+ * that `type` with the engine.
+ */
+export type BuildRequestResult<T = unknown> =
+  | { ok: true; status: number; body: T }
+  | { ok: false; reason: BuildRequestReason }
+
+/**
+ * A {@link MethodMap['build.request']} whose `type`, `method` and `query` have
+ * been through {@link parseJobRequestType} and its siblings — what the host
+ * frame hands its engine once nothing about the route is still the caller's
+ * unchecked word. `body` stays `unknown`: it is never inspected.
+ */
+export interface JobRequest {
+  type: string
+  method: BuildRequestMethod
+  query: Record<string, string>
+  body?: unknown
+  timeoutMs: number
+}
+
 /**
  * The complete wire method map. Keys are the literal method strings; each value
  * declares the request `params` and the response `result`.
@@ -488,6 +541,50 @@ export interface MethodMap {
   'build.setTitle': {
     params: { sessionId: string; name: string }
     result: BuildApplyResult
+  }
+  /**
+   * Send one request to the app the mythcode session is running, and read the
+   * answer back. The GENERIC form of the two wrappers above, for the rest of
+   * mythcode's per-job control routes — style groups, element style and text,
+   * history, the database proxy — so a new one of those needs no new method
+   * here.
+   *
+   * `type` names the route UNDER this session's own job (`style-groups`,
+   * `history/restore`); the job id and the build server's URL are the host's
+   * and are never the caller's to choose. It must be relative, may hold only
+   * `[A-Za-z0-9._~/-]`, and may not contain an empty, `.` or `..` segment —
+   * see {@link parseJobRequestType}. `query` is encoded by the host, never
+   * concatenated. `method` defaults to `POST`.
+   *
+   * THE SDK DOES NOT INTERPRET `body` OR THE ANSWER. The request payload and
+   * the shape of the answer are a contract between mythcode and the app making
+   * the call; this method carries them and classifies only the transport. The
+   * answer is capped (see `JOB_REQUEST_BODY_MAX_BYTES`, 1 MiB) because it
+   * crosses a `postMessage` boundary.
+   *
+   * A route may HOLD the request open until what was asked for exists — a name
+   * or a theme the build has not suggested yet — which is how the engine
+   * notifies this side of something without a second push channel. `timeoutMs`
+   * bounds that wait (default 30 s, maximum 5 min; see
+   * {@link parseJobRequestTimeout}) and elapsing is `{ ok: false, reason:
+   * 'timeout' }`, so asking again is the whole recovery. Requests on one
+   * session do not queue behind each other: a held one runs alongside the fast
+   * ones, each with its own answer.
+   *
+   * Same requirements as {@link MethodMap['build.applyTheme']}: a first-party,
+   * signed-in caller and a mythcode session this app created. A session on the
+   * standard engine has no such app and rejects.
+   */
+  'build.request': {
+    params: {
+      sessionId: string
+      type: string
+      method?: BuildRequestMethod
+      query?: Record<string, string>
+      body?: unknown
+      timeoutMs?: number
+    }
+    result: BuildRequestResult
   }
 
   // ── fs.* file ops ───────────────────────────────────────────────────────
@@ -1505,14 +1602,20 @@ export interface MethodMap {
    * Send a batch of events, captured by the calling app, to the platform —
    * generic ingest; error reports are the current use case, usage analytics
    * a planned one. Best-effort: the host forwards the batch server-side and
-   * always resolves `Ok`, even if the forward itself fails. Caps (server-
+   * always resolves, even if the forward itself fails. Caps (server-
    * enforced): `batch` ≤ 100 items; each item must be a JSON object whose
    * serialization is ≤ 8KB of UTF-8 bytes — a violating item is dropped and
    * counted server-side, never fatal to the rest of the batch.
+   *
+   * The result is `Ok` except in one case: a batch carrying a `maker_report`
+   * item sent from a browser with no signed-in session resolves
+   * `{ ok: true, forwarded: false, reason: 'sign_in_required' }`. The report
+   * was stored but shown to nobody, so do not report it as sent — ask the
+   * person to sign in and file again. See `SendBatchResult`.
    */
   'event.sendBatch': {
     params: { batch: Record<string, unknown>[] }
-    result: Ok
+    result: SendBatchResult
   }
 
   // ── ai.* (mythwork-ai proxy) ────────────────────────────────────────────

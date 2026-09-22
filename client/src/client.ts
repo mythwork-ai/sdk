@@ -9,7 +9,10 @@
 
 import {
   DEFAULT_INTERACTIVE_TIMEOUT_MS,
+  JOB_REQUEST_DEFAULT_TIMEOUT_MS,
+  JOB_REQUEST_REPLY_MARGIN_MS,
   type AiOpts,
+  type BuildRequestResult,
   type ChatCompletion,
   type ChatMessage,
   type Event as ProtocolEvent,
@@ -217,6 +220,35 @@ export class MythworkClient {
      */
     setTitle: (params: MethodParams<'build.setTitle'>, opts?: RequestOptions) =>
       this.request('build.setTitle', params, opts),
+    /**
+     * Send one request to the running app and read the answer back — the
+     * generic form of the two above, for the rest of mythcode's per-job routes.
+     * `type` names the route under this session's own job (`style-groups`,
+     * `history/restore`); the job and the build server are the host's to choose.
+     *
+     * The SDK does not interpret `body` or the answer: `T` is the shape YOUR
+     * caller and mythcode have agreed on for this `type`, and the SDK only
+     * carries it. Resolves `{ ok: true, status, body }`, or
+     * `{ ok: false, reason }` for a moment the app could not answer in; an
+     * unusable `type`, `method` or `query` rejects. Wire: `build.request`.
+     *
+     * A route may HOLD the request until it has something to say. `timeoutMs`
+     * bounds that wait (default 30 s, maximum 5 min) and elapsing resolves
+     * `{ ok: false, reason: 'timeout' }` rather than throwing, so asking again
+     * is the whole recovery. The transport deadline is raised to match, since
+     * otherwise the default 30 s one would cancel the held request from this
+     * side first and the caller would see a thrown timeout instead of a result.
+     */
+    request: <T = unknown>(
+      params: MethodParams<'build.request'>,
+      opts?: RequestOptions,
+    ): Promise<BuildRequestResult<T>> =>
+      this.request('build.request', params, {
+        ...opts,
+        timeoutMs:
+          opts?.timeoutMs ??
+          (params.timeoutMs ?? JOB_REQUEST_DEFAULT_TIMEOUT_MS) + JOB_REQUEST_REPLY_MARGIN_MS,
+      }) as Promise<BuildRequestResult<T>>,
   }
 
   // ── fs.* file ops ─────────────────────────────────────────────────────────
@@ -539,6 +571,16 @@ export class MythworkClient {
      * telemetry silently dead forever). Caps: batch ≤ 100 items; each item a
      * JSON object whose serialization is ≤ 8KB UTF-8 bytes — violating items
      * are dropped server-side and counted, not fatal to the batch.
+     *
+     * The result is `{ ok: true }` in every case above and in the ordinary
+     * success case. It carries two extra fields in exactly one situation: a
+     * batch containing a `maker_report` item, sent from a browser with no
+     * signed-in session, resolves
+     * `{ ok: true, forwarded: false, reason: 'sign_in_required' }`. The report
+     * was stored but never shown to a human, so an app that files bug reports
+     * should check `'forwarded' in res && !res.forwarded` and prompt the
+     * person to sign in rather than telling them it was sent. Plain error
+     * reporting can keep ignoring the result.
      * Wire: `event.sendBatch`.
      */
     sendBatch: (

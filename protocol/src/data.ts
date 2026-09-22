@@ -145,6 +145,25 @@ export type ProjectConfig = { projectId: string } & Record<string, unknown>
  */
 export type Ok = { ok: true }
 
+/**
+ * Result of `event.sendBatch`.
+ *
+ * Plain `Ok` is the normal answer, and the only one an app that just reports
+ * errors ever needs to look at. The second member is the one case worth
+ * telling the caller about: the batch carried a `maker_report` — a bug report
+ * a maker filed about their own app — and the platform did not pass it on to
+ * anyone, because the browser had no signed-in session to attribute it to.
+ * The report is still stored, the call still succeeded (`ok: true`, never a
+ * rejection), but nothing about it reached a human, so an app that shows "Sent"
+ * on this result would be lying. Prompt the person to sign in and file again.
+ *
+ * There is deliberately no `forwarded: true` counterpart. Delivery happens
+ * after the response is written, so a success answer cannot honestly promise
+ * it; `forwarded: false` is narrow on purpose and means only this one refusal,
+ * which is also the only one the person can do something about.
+ */
+export type SendBatchResult = Ok | { ok: true; forwarded: false; reason: 'sign_in_required' }
+
 // ── explore surface ─────────────────────────────────────────────────────────
 // @experimental — API may still evolve before 1.0.
 // The shapes below back the `explore.*` and `profile.*` methods.

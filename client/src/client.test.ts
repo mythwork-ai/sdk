@@ -1,4 +1,10 @@
-import { DEFAULT_INTERACTIVE_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS } from '@mythwork/protocol'
+import {
+  DEFAULT_INTERACTIVE_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  JOB_REQUEST_DEFAULT_TIMEOUT_MS,
+  JOB_REQUEST_MAX_TIMEOUT_MS,
+  JOB_REQUEST_REPLY_MARGIN_MS,
+} from '@mythwork/protocol'
 import type { Id } from '@mythwork/protocol/contract/db-client.interface'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MythworkClient } from './client'
@@ -121,6 +127,27 @@ describe('namespaced helper → wire method mapping', () => {
       () => client.build.setTitle({ sessionId: 'sess_1', name: 'Renamed' }),
       'build.setTitle',
       { sessionId: 'sess_1', name: 'Renamed' },
+    ],
+    [
+      'build.request',
+      () =>
+        client.build.request({
+          sessionId: 'sess_1',
+          type: 'history/restore',
+          method: 'PUT',
+          query: { limit: '20' },
+          body: { checkpoint: 'c1' },
+          timeoutMs: 60_000,
+        }),
+      'build.request',
+      {
+        sessionId: 'sess_1',
+        type: 'history/restore',
+        method: 'PUT',
+        query: { limit: '20' },
+        body: { checkpoint: 'c1' },
+        timeoutMs: 60_000,
+      },
     ],
     ['profile.me', () => client.profile.me(), 'profile.me', {}],
     [
@@ -349,6 +376,82 @@ describe('auth.signIn / auth.signOut interactive-timeout budget', () => {
 
     await vi.advanceTimersByTimeAsync(DEFAULT_INTERACTIVE_TIMEOUT_MS - DEFAULT_REQUEST_TIMEOUT_MS)
     await expect(p).rejects.toThrow(/timed out after 120000ms/)
+  })
+})
+
+// A `build.request` may be HELD by its route for up to five minutes. The host's
+// own deadline has to be the one that decides it, because that produces a
+// RESULT (`{ ok: false, reason: 'timeout' }`) the caller can act on; the
+// transport's produces a thrown error and a cancel. So the transport deadline
+// tracks `timeoutMs` plus a margin instead of the generic 30s default.
+describe('build.request transport budget', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+
+  beforeEach(() => {
+    chan = new MessageChannel()
+    chan.port2.start()
+    // The host never replies: these only care about when the client gives up.
+    client = new MythworkClient(chan.port1)
+  })
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+    vi.useRealTimers()
+  })
+
+  const held = (opts?: { timeoutMs?: number }) =>
+    client.build.request(
+      { sessionId: 'sess_1', type: 'name', timeoutMs: JOB_REQUEST_MAX_TIMEOUT_MS },
+      opts,
+    )
+
+  it('waits out a held request instead of cancelling it at the generic 30s default', async () => {
+    vi.useFakeTimers()
+    const p = held()
+    const settled = vi.fn()
+    p.catch(settled)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
+    expect(settled).not.toHaveBeenCalled()
+
+    const budget = JOB_REQUEST_MAX_TIMEOUT_MS + JOB_REQUEST_REPLY_MARGIN_MS
+    await vi.advanceTimersByTimeAsync(budget - DEFAULT_REQUEST_TIMEOUT_MS)
+    await expect(p).rejects.toThrow(new RegExp(`timed out after ${budget}ms`))
+  })
+
+  it('uses the 30s default wait plus the margin when the caller names no timeout', async () => {
+    vi.useFakeTimers()
+    const p = client.build.request({ sessionId: 'sess_1', type: 'style-groups' })
+    const budget = JOB_REQUEST_DEFAULT_TIMEOUT_MS + JOB_REQUEST_REPLY_MARGIN_MS
+    const assertion = expect(p).rejects.toThrow(new RegExp(`timed out after ${budget}ms`))
+    await vi.advanceTimersByTimeAsync(budget)
+    await assertion
+  })
+
+  // The same present-but-undefined trap `auth.signIn` was caught by: a wrapper
+  // spreading an options bag with `timeoutMs` left unset must still get the
+  // budget, not fall through to the transport's generic default.
+  it('still raises the budget when opts.timeoutMs is explicitly undefined', async () => {
+    vi.useFakeTimers()
+    const p = held({ timeoutMs: undefined })
+    const settled = vi.fn()
+    p.catch(settled)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
+    expect(settled).not.toHaveBeenCalled()
+
+    const budget = JOB_REQUEST_MAX_TIMEOUT_MS + JOB_REQUEST_REPLY_MARGIN_MS
+    await vi.advanceTimersByTimeAsync(budget - DEFAULT_REQUEST_TIMEOUT_MS)
+    await expect(p).rejects.toThrow(new RegExp(`timed out after ${budget}ms`))
+  })
+
+  it('honours an explicit opts.timeoutMs over the computed budget', async () => {
+    vi.useFakeTimers()
+    const p = held({ timeoutMs: 5000 })
+    const assertion = expect(p).rejects.toThrow(/timed out after 5000ms/)
+    await vi.advanceTimersByTimeAsync(5000)
+    await assertion
   })
 })
 
@@ -694,6 +797,20 @@ describe('event.sendBatch never-rejects contract', () => {
     await expect(c.event.sendBatch({ batch: [{ message: 'boom' }] })).resolves.toEqual({
       ok: true,
     })
+  })
+
+  it('passes the sign-in refusal through unchanged', async () => {
+    // A maker report filed from a signed-out browser is stored but shown to
+    // nobody. The helper swallows transport failures, not this: an app that
+    // reported it as "Sent" would be lying to the person who filed it.
+    const c = hostReplying(id => ({
+      id,
+      result: { ok: true, forwarded: false, reason: 'sign_in_required' },
+    }))
+
+    await expect(
+      c.event.sendBatch({ batch: [{ type: 'maker_report', text: 'it broke' }] }),
+    ).resolves.toEqual({ ok: true, forwarded: false, reason: 'sign_in_required' })
   })
 
   it('resolves { ok: true } on a timeout (host never replies)', async () => {
