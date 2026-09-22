@@ -45,6 +45,7 @@ inner app                         host frame
 |---|---|---|
 | `OC_PING` | `'oc-ping'` | Message type the inner app sends to the host |
 | `OC_INIT` | `'oc-init'` | Message type the host replies with, transferring the port |
+| `OC_SIGNIN_GESTURE` | `'oc-signin-gesture'` | Message type the inner app posts on a sign-in click, so the host can open the OAuth popup on the click's own user gesture |
 | `PING_INTERVAL_MS` | `100` | Milliseconds between successive pings |
 | `PING_BUDGET_MS` | `5000` | Total handshake budget before giving up |
 | `OC_PORT_GLOBAL` | `'__oc'` | `window` property where the port is installed (`window.__oc.port`) |
@@ -54,6 +55,16 @@ inner app                         host frame
 The `oc-init` message body also carries `shareBaseOrigin`: the host-frame origin
 string the inner app may use to construct share links. It does not make requests
 to that origin.
+
+`oc-signin-gesture` is the one message besides the handshake that travels on the
+window rather than the port, and it is sent for a browser reason. WebKit decides
+a popup is user-initiated from a token that lives on the JS stack, and
+`MessagePort` delivery does not carry it — so a `kernel.signIn` served over the
+port has no gesture to open a window with, and Safari demotes the OAuth popup to
+an address-bar icon. `window.postMessage` does forward the token, so the SDK
+reports the click that way before it sends the RPC. It is a hint: no id, no
+reply, and the RPC still does the work. A host that does not know the message
+ignores it and sign-in behaves as it did before.
 
 ---
 
@@ -248,7 +259,7 @@ supply or spoof attribution.
 
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
-| `event.sendBatch` | `{ batch: Record<string, unknown>[] }` | `SendBatchResult` | Best-effort: the host forwards the batch server-side and always resolves, even if the forward fails. Caps (server-enforced): `batch` ≤ 100 items; each item a JSON object whose serialization is ≤ 8KB of UTF-8 bytes — a violating item is dropped and counted server-side, never fatal to the rest of the batch. The result is `Ok` except for one case: a batch carrying a `maker_report` item sent with no signed-in session resolves `{ ok: true, forwarded: false, reason: 'sign_in_required' }` — the report was stored but reached nobody, so ask the person to sign in and file again rather than reporting it as sent |
+| `event.sendBatch` | `{ batch: Record<string, unknown>[] }` | `SendBatchResult` | Best-effort: the host forwards the batch server-side and always resolves, even if the forward fails. Caps (server-enforced): `batch` ≤ 100 items; each item a JSON object whose serialization is ≤ 8KB of UTF-8 bytes — a violating item is dropped and counted server-side, never fatal to the rest of the batch. The result is `Ok` except when a batch carrying a `maker_report` item reached nobody, which resolves `{ ok: true, forwarded: false, reason }` with `reason` either `'sign_in_required'` (no signed-in session, so the report was stored but attributed and forwarded to no one — ask the person to sign in and file again) or `'rate_limited'` (the per-address request throttle refused the batch before reading it, so the report was not stored — ask the person to wait a moment and file again). Do not report either as sent |
 
 ### database.* — per-project relational data
 

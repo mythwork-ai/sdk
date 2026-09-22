@@ -34,6 +34,29 @@ export const OC_PING = 'oc-ping'
 export const OC_INIT = 'oc-init'
 
 /**
+ * Message `type` the inner app posts to the host's WINDOW at the instant a
+ * sign-in is clicked, so the host can open the OAuth popup while the browser
+ * still credits the click.
+ *
+ * It exists because of how Safari decides a popup is user-initiated. WebKit's
+ * `LocalDOMWindow::allowPopUp` consults `UserGestureIndicator::
+ * processingUserGesture()` — a token that lives on the JS stack, not the
+ * spec's per-window transient activation — and `MessagePort` delivery never
+ * carries that token, so a `kernel.signIn` arriving over the RPC port reaches
+ * the host with no gesture no matter how promptly it is served.
+ * `window.postMessage` DOES carry it (`LocalDOMWindow::postMessage` captures
+ * the current gesture and restores it on delivery, within a 1s forwarding
+ * window), which is why this hint travels on the window and not the port.
+ *
+ * It is a hint, not a request: it carries no id, expects no reply, and the
+ * real `kernel.signIn` RPC still follows over the port. A host that predates
+ * it ignores an unknown window message, and a host that receives it without
+ * the RPC ever arriving discards the reservation on a timer — so old and new
+ * on either side degrade to exactly today's behaviour.
+ */
+export const OC_SIGNIN_GESTURE = 'oc-signin-gesture'
+
+/**
  * Interval, in milliseconds, between successive `oc-ping` messages while the
  * inner app waits for the port.
  */
@@ -93,6 +116,15 @@ export const OC_PORT_GLOBAL = '__oc'
  */
 export interface OcPingMessage {
   type: typeof OC_PING
+}
+
+/**
+ * The gesture hint the inner app posts to the host's window on a sign-in
+ * click. Body-less by design — see {@link OC_SIGNIN_GESTURE}; the host
+ * authenticates it by `MessageEvent.source`, exactly as it does `oc-ping`.
+ */
+export interface OcSignInGestureMessage {
+  type: typeof OC_SIGNIN_GESTURE
 }
 
 /**

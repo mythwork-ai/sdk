@@ -11,6 +11,7 @@ import {
   DEFAULT_INTERACTIVE_TIMEOUT_MS,
   JOB_REQUEST_DEFAULT_TIMEOUT_MS,
   JOB_REQUEST_REPLY_MARGIN_MS,
+  OC_SIGNIN_GESTURE,
   type AiOpts,
   type BuildRequestResult,
   type ChatCompletion,
@@ -69,6 +70,30 @@ export type DbSurface = {
   ) => Promise<SchemaRow>
   delete: (entity: string, id: Id<string>, opts?: RequestOptions) => Promise<void>
   schema: (opts?: RequestOptions) => Promise<SchemaResponse>
+}
+
+/**
+ * Tell the host, on its window, that a sign-in was just clicked.
+ *
+ * `auth.signIn()` calls this before it sends the RPC, and everything here is
+ * synchronous, because the whole point is to reach the host while the browser
+ * still attributes a user gesture to this call stack. The RPC that follows
+ * travels over the MessagePort, which does not carry a gesture in WebKit — see
+ * {@link OC_SIGNIN_GESTURE}.
+ *
+ * Fire-and-forget and best-effort: un-embedded callers (the dev host, tests,
+ * node) have no host window and simply skip it, and a host that does not know
+ * the message ignores it. Nothing downstream depends on it having arrived.
+ */
+function reportSignInGesture(): void {
+  if (typeof window === 'undefined') return
+  const parent = window.parent
+  if (!parent || parent === window) return
+  try {
+    parent.postMessage({ type: OC_SIGNIN_GESTURE }, '*')
+  } catch {
+    /* a cross-origin parent that refuses the post is not a sign-in failure */
+  }
 }
 
 /**
@@ -453,11 +478,13 @@ export class MythworkClient {
      * `requestOverPort`'s own `opts?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS`
      * (30s) — the exact bug this default was added to fix.
      */
-    signIn: (params: MethodParams<'kernel.signIn'> = {}, opts?: RequestOptions) =>
-      this.request('kernel.signIn', params, {
+    signIn: (params: MethodParams<'kernel.signIn'> = {}, opts?: RequestOptions) => {
+      reportSignInGesture()
+      return this.request('kernel.signIn', params, {
         ...opts,
         timeoutMs: opts?.timeoutMs ?? DEFAULT_INTERACTIVE_TIMEOUT_MS,
-      }),
+      })
+    },
     /**
      * Stop being identified to this app; the platform session stays signed in.
      * Wire: `kernel.signOut`.
@@ -573,14 +600,17 @@ export class MythworkClient {
      * are dropped server-side and counted, not fatal to the batch.
      *
      * The result is `{ ok: true }` in every case above and in the ordinary
-     * success case. It carries two extra fields in exactly one situation: a
-     * batch containing a `maker_report` item, sent from a browser with no
-     * signed-in session, resolves
-     * `{ ok: true, forwarded: false, reason: 'sign_in_required' }`. The report
-     * was stored but never shown to a human, so an app that files bug reports
-     * should check `'forwarded' in res && !res.forwarded` and prompt the
-     * person to sign in rather than telling them it was sent. Plain error
-     * reporting can keep ignoring the result.
+     * success case. It carries two extra fields when a batch containing a
+     * `maker_report` item reached nobody:
+     * `{ ok: true, forwarded: false, reason: 'sign_in_required' }` when the
+     * browser had no signed-in session (the report was stored, but attributed
+     * and shown to no one), or `{ ..., reason: 'rate_limited' }` when the
+     * platform's per-address request throttle dropped the batch (the report
+     * was not stored at all — the usual cause is the app's own error reports
+     * having just used up the budget). An app that files bug reports should
+     * check `'forwarded' in res && !res.forwarded` and prompt the person to
+     * sign in, or to try again in a moment, rather than telling them it was
+     * sent. Plain error reporting can keep ignoring the result.
      * Wire: `event.sendBatch`.
      */
     sendBatch: (

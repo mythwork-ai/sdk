@@ -112,11 +112,19 @@ await sdk.explore.rate({ projectId: app.projectId, stars: 5 })
 await sdk.event.sendBatch({ batch: [{ name: 'page:view' }] })
 
 // One result is worth reading: a batch carrying a `maker_report` item (a bug
-// report the app's maker filed about the app) sent from a signed-out browser
-// resolves `{ ok: true, forwarded: false, reason: 'sign_in_required' }`. The
-// report was stored but reached nobody — prompt for sign-in, don't say "Sent."
+// report the app's maker filed about the app) that reached nobody resolves
+// `{ ok: true, forwarded: false, reason }`. `'sign_in_required'` means the
+// browser was signed out, so the report was stored but attributed to no one;
+// `'rate_limited'` means the per-address request throttle dropped the batch,
+// so the report was not stored at all — though any 429 that reaches the host
+// bridge is labeled this way, including one produced upstream of the API
+// (edge rate limiting, a firewall rule, a proxy), so treat it as the cause
+// the platform expects rather than a proven one. Either way, don't say "Sent."
 const res = await sdk.event.sendBatch({ batch: [makerReport] })
-if ('forwarded' in res && !res.forwarded) promptSignIn()
+if ('forwarded' in res && !res.forwarded) {
+  if (res.reason === 'sign_in_required') promptSignIn()
+  else promptRetryLater()
+}
 ```
 
 ### Subscribe to file changes

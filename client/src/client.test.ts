@@ -4,6 +4,7 @@ import {
   JOB_REQUEST_DEFAULT_TIMEOUT_MS,
   JOB_REQUEST_MAX_TIMEOUT_MS,
   JOB_REQUEST_REPLY_MARGIN_MS,
+  OC_SIGNIN_GESTURE,
 } from '@mythwork/protocol'
 import type { Id } from '@mythwork/protocol/contract/db-client.interface'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -813,6 +814,20 @@ describe('event.sendBatch never-rejects contract', () => {
     ).resolves.toEqual({ ok: true, forwarded: false, reason: 'sign_in_required' })
   })
 
+  it('passes the rate-limit refusal through unchanged', async () => {
+    // The platform's per-address throttle dropped the batch before reading it,
+    // so the report was never stored. Same rule as the sign-in refusal: the
+    // helper must not flatten this into a plain success.
+    const c = hostReplying(id => ({
+      id,
+      result: { ok: true, forwarded: false, reason: 'rate_limited' },
+    }))
+
+    await expect(
+      c.event.sendBatch({ batch: [{ type: 'maker_report', text: 'it broke' }] }),
+    ).resolves.toEqual({ ok: true, forwarded: false, reason: 'rate_limited' })
+  })
+
   it('resolves { ok: true } on a timeout (host never replies)', async () => {
     const c = hostReplying(null)
 
@@ -1027,5 +1042,70 @@ describe('sdk.db.for(projectId) — a named project rides through every call', (
 
     expect(outbound).toHaveLength(1)
     expect(outbound[0]!.args).not.toHaveProperty('jobId')
+  })
+})
+
+// The sign-in click has to reach the host's WINDOW, not just its port: WebKit
+// carries a user gesture through `window.postMessage` and not through
+// `MessagePort`, so this hint is the only thing that lets the host open the
+// OAuth popup while Safari still credits the click. See OC_SIGNIN_GESTURE.
+describe('auth.signIn gesture hint', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+  let posted: { message: unknown; targetOrigin: string }[]
+  const realWindow = globalThis.window
+
+  beforeEach(() => {
+    chan = new MessageChannel()
+    chan.port2.start()
+    chan.port2.addEventListener('message', e => {
+      const d = e.data as { id: string }
+      chan.port2.postMessage({ id: d.id, result: { kind: 'anonymous', userId: 'anonymous' } })
+    })
+    posted = []
+    const parent = {
+      postMessage: (message: unknown, targetOrigin: string) => {
+        posted.push({ message, targetOrigin })
+      },
+    }
+    vi.stubGlobal('window', { parent })
+    client = new MythworkClient(chan.port1)
+  })
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+    vi.stubGlobal('window', realWindow)
+    vi.unstubAllGlobals()
+  })
+
+  it('posts the gesture to the host window before the RPC is sent', async () => {
+    // Not awaited: the hint has to be out synchronously, in the click's own
+    // call stack, or the gesture it exists to carry is already gone.
+    const pending = client.auth.signIn()
+
+    expect(posted).toEqual([{ message: { type: OC_SIGNIN_GESTURE }, targetOrigin: '*' }])
+    await pending
+  })
+
+  it('sends no hint and still signs in when there is no host window', async () => {
+    // Un-embedded callers (dev host, tests, node) have no parent to tell.
+    vi.stubGlobal('window', undefined)
+    const unembedded = new MythworkClient(chan.port1)
+
+    await expect(unembedded.auth.signIn()).resolves.toMatchObject({ kind: 'anonymous' })
+    expect(posted).toEqual([])
+  })
+
+  it('does not fail the sign-in when the parent refuses the post', async () => {
+    vi.stubGlobal('window', {
+      parent: {
+        postMessage: () => {
+          throw new Error('cross-origin refusal')
+        },
+      },
+    })
+    const refused = new MythworkClient(chan.port1)
+
+    await expect(refused.auth.signIn()).resolves.toMatchObject({ kind: 'anonymous' })
   })
 })

@@ -309,12 +309,41 @@ export type AgentEvent =
          * looks the record up again, so resending is the recovery.
          */
         | 'app_unreachable'
+        /** A signed-in user's rolling 5h/7d or calendar-month spend cap tripped. */
+        | 'usage_limit'
       /** Sanitized supporting text; today only `refused` carries one. */
       detail?: string
+      /**
+       * The numbers behind a `usage_limit` refusal, so a client can phrase the
+       * refusal in the reader's own timezone and units instead of repeating the
+       * server's UTC sentence. Set only when `reason` is `usage_limit`, and even
+       * then only when the refusing backend sent a structured body: `message`
+       * stays the complete, readable fallback.
+       */
+      usageLimit?: UsageLimitDetail
     }
   | { kind: 'turn-done'; turnId: string; status: 'ok' | 'stopped' | 'error' }
   | { kind: 'usage'; promptTokens?: number; completionTokens?: number; costUsd?: number }
   | { kind: 'tool-request'; requestId: string; tool: string; args: unknown }
+
+/**
+ * @experimental What a spend-cap refusal was about, in the units the platform
+ * refused in. Carried on an `error` event whose `reason` is `usage_limit`.
+ *
+ * Money is DOLLARS here, as it is on every platform wire body — micro-dollars
+ * are the ledger's internal unit and never leave the server. `resetsAt` is
+ * epoch ms, so a client can render the wait in the reader's own timezone.
+ */
+export interface UsageLimitDetail {
+  /** Which spend window tripped: rolling five-hour, rolling seven-day, or the calendar month. */
+  window: '5h' | '7d' | 'month'
+  /** When this window has room again, as epoch ms. */
+  resetsAt: number
+  /** Spend inside the window, in dollars. */
+  usedUsd: number
+  /** The ceiling in dollars, or null when this window has no ceiling — never zero. */
+  limitUsd: number | null
+}
 
 /**
  * @experimental The push-message envelope for agent session events.
@@ -1607,11 +1636,15 @@ export interface MethodMap {
    * serialization is ≤ 8KB of UTF-8 bytes — a violating item is dropped and
    * counted server-side, never fatal to the rest of the batch.
    *
-   * The result is `Ok` except in one case: a batch carrying a `maker_report`
-   * item sent from a browser with no signed-in session resolves
-   * `{ ok: true, forwarded: false, reason: 'sign_in_required' }`. The report
-   * was stored but shown to nobody, so do not report it as sent — ask the
-   * person to sign in and file again. See `SendBatchResult`.
+   * The result is `Ok` except when the batch carried a `maker_report` item
+   * that reached nobody, which resolves
+   * `{ ok: true, forwarded: false, reason }`. The reason is
+   * `'sign_in_required'` when the browser had no signed-in session (the report
+   * was stored, but attributed to no one and forwarded to no one) or
+   * `'rate_limited'` when the platform's per-address throttle refused the
+   * whole batch (the report was not stored at all). Either way, do not report
+   * it as sent — ask the person to sign in, or to wait a moment, and file
+   * again. See `SendBatchResult` and `SendBatchRefusalReason`.
    */
   'event.sendBatch': {
     params: { batch: Record<string, unknown>[] }

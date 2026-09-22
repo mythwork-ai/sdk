@@ -149,20 +149,37 @@ export type Ok = { ok: true }
  * Result of `event.sendBatch`.
  *
  * Plain `Ok` is the normal answer, and the only one an app that just reports
- * errors ever needs to look at. The second member is the one case worth
- * telling the caller about: the batch carried a `maker_report` — a bug report
- * a maker filed about their own app — and the platform did not pass it on to
- * anyone, because the browser had no signed-in session to attribute it to.
- * The report is still stored, the call still succeeded (`ok: true`, never a
- * rejection), but nothing about it reached a human, so an app that shows "Sent"
- * on this result would be lying. Prompt the person to sign in and file again.
+ * errors ever needs to look at. The second member is the case worth telling
+ * the caller about: the batch carried a `maker_report` — a bug report a maker
+ * filed about their own app — and the platform did not pass it on to anyone.
+ * The call still succeeded (`ok: true`, never a rejection), but nothing about
+ * the report reached a human, so an app that shows "Sent" on this result would
+ * be lying. See `SendBatchRefusalReason` for the two causes and what to say
+ * about each.
  *
  * There is deliberately no `forwarded: true` counterpart. Delivery happens
  * after the response is written, so a success answer cannot honestly promise
- * it; `forwarded: false` is narrow on purpose and means only this one refusal,
- * which is also the only one the person can do something about.
+ * it; `forwarded: false` is narrow on purpose and means only these refusals,
+ * which are also the ones the person can do something about.
  */
-export type SendBatchResult = Ok | { ok: true; forwarded: false; reason: 'sign_in_required' }
+export type SendBatchResult = Ok | { ok: true; forwarded: false; reason: SendBatchRefusalReason }
+
+/**
+ * Why a `maker_report` in an `event.sendBatch` batch reached nobody.
+ *
+ * - `sign_in_required` — the browser had no signed-in session, so the platform
+ *   had no one to attribute the report to and archived it without forwarding.
+ *   The report is stored; ask the person to sign in and file it again.
+ * - `rate_limited` — the platform's per-address request throttle refused the
+ *   whole batch before reading it, so the report was never stored at all. This
+ *   is the crash-storm case: an app erroring in a loop burns the address's
+ *   request budget, and the maker's report is what loses. Ask the person to
+ *   wait a moment and file again.
+ *
+ * Both mean the same thing to a user interface — do not say "Sent" — and
+ * differ only in the follow-up to offer.
+ */
+export type SendBatchRefusalReason = 'sign_in_required' | 'rate_limited'
 
 // ── explore surface ─────────────────────────────────────────────────────────
 // @experimental — API may still evolve before 1.0.
