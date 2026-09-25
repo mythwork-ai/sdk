@@ -331,6 +331,30 @@ describe('auth.signIn / auth.signOut interactive-timeout budget', () => {
     await spreadAssertion
   })
 
+  it.each([
+    ['project.publish', () => client.project.publish({ pid: 'p-pub-1234567', shortName: 'x' })],
+    ['profile.publish', () => client.profile.publish({ pid: 'p-pub-1234567', handle: 'h' })],
+  ])('%s does not time out at the generic 30s default', async (_name, call) => {
+    vi.useFakeTimers()
+    const p = call()
+    const settled = vi.fn()
+    p.catch(settled)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
+    expect(settled).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERACTIVE_TIMEOUT_MS - DEFAULT_REQUEST_TIMEOUT_MS)
+    await expect(p).rejects.toThrow(/timed out after 120000ms/)
+  })
+
+  it('project.publish honors an explicit timeout override', async () => {
+    vi.useFakeTimers()
+    const p = client.project.publish({ pid: 'p-pub-1234567', shortName: 'x' }, { timeoutMs: 5000 })
+    const assertion = expect(p).rejects.toThrow(/timed out after 5000ms/)
+    await vi.advanceTimersByTimeAsync(5000)
+    await assertion
+  })
+
   it('project.close still uses the generic 30s default', async () => {
     vi.useFakeTimers()
     const p = client.project.close({ pid: 'p-close-1234567' })

@@ -11,6 +11,7 @@ import {
   jobBelongsToProject,
   parseAppName,
   parseAppTheme,
+  parseProjectWorkflow,
   JOB_REQUEST_DEFAULT_TIMEOUT_MS,
   JOB_REQUEST_MAX_TIMEOUT_MS,
   parseJobRequestMethod,
@@ -52,6 +53,19 @@ describe('parseAppName', () => {
     expect(parseAppName('x'.repeat(201))).toBeNull()
     for (const value of ['', '   ', 42, null, undefined]) {
       expect(parseAppName(value), String(value)).toBeNull()
+    }
+  })
+})
+
+describe('parseProjectWorkflow', () => {
+  it('trims free text and bounds the trimmed value at 200 characters', () => {
+    expect(parseProjectWorkflow('  react-app \n')).toBe('react-app')
+    expect(parseProjectWorkflow('any text at all')).toBe('any text at all')
+    expect(parseProjectWorkflow(`  ${'x'.repeat(200)}  `)).toBe('x'.repeat(200))
+    expect(parseProjectWorkflow('x'.repeat(201))).toBeNull()
+    expect(parseProjectWorkflow(42)).toBeNull()
+    for (const value of ['', '   ', null, undefined]) {
+      expect(parseProjectWorkflow(value), String(value)).toBeUndefined()
     }
   })
 })

@@ -204,9 +204,18 @@ export class MythworkClient {
     /** Toggle public collaboration on a project. Wire: `project.setPublicCollab`. */
     setPublicCollab: (params: MethodParams<'project.setPublicCollab'>, opts?: RequestOptions) =>
       this.request('project.setPublicCollab', params, opts),
-    /** Publish the project's HEAD under a short name. Wire: `publish.run`. */
+    /**
+     * Publish the project's HEAD under a short name. Wire: `publish.run`.
+     *
+     * Budgeted with {@link DEFAULT_INTERACTIVE_TIMEOUT_MS}: the host replies only
+     * after uploading the tree and after `POST /publish` has scanned and
+     * compiled it, which can take longer than 30s.
+     */
     publish: (params: MethodParams<'publish.run'>, opts?: RequestOptions) =>
-      this.request('publish.run', params, opts),
+      this.request('publish.run', params, {
+        ...opts,
+        timeoutMs: opts?.timeoutMs ?? DEFAULT_INTERACTIVE_TIMEOUT_MS,
+      }),
     /**
      * Fork the app at the source `projectId` — a CAS ref-copy of its PUBLISHED
      * tree (never the source's live editing head) into a fresh,
@@ -651,9 +660,15 @@ export class MythworkClient {
     /** Consent-gated: link a content subproject. Wire: `profile.setContentProject`. */
     setContentProject: (params: MethodParams<'profile.setContentProject'>, opts?: RequestOptions) =>
       this.request('profile.setContentProject', params, opts),
-    /** Consent-gated: publish profile content under a handle. Wire: `profile.publish`. */
+    /**
+     * Consent-gated: publish profile content under a handle. Wire:
+     * `profile.publish`. Same budget as `project.publish`, which it runs.
+     */
     publish: (params: MethodParams<'profile.publish'>, opts?: RequestOptions) =>
-      this.request('profile.publish', params, opts),
+      this.request('profile.publish', params, {
+        ...opts,
+        timeoutMs: opts?.timeoutMs ?? DEFAULT_INTERACTIVE_TIMEOUT_MS,
+      }),
     /** Toggle the viewer's favorite of a creator or app. Wire: `profile.setFavorite`. */
     setFavorite: (params: MethodParams<'profile.setFavorite'>, opts?: RequestOptions) =>
       this.request('profile.setFavorite', params, opts),

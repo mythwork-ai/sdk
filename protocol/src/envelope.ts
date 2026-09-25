@@ -27,6 +27,17 @@ export interface RpcResponse {
   id: string
   result?: unknown
   error?: string
+  code?: string
+}
+
+export class RpcError extends Error {
+  readonly code: string
+
+  constructor(message: string, code: string) {
+    super(message)
+    this.name = 'RpcError'
+    this.code = code
+  }
 }
 
 /**

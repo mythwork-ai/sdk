@@ -28,6 +28,7 @@ import type {
   OpenAITool,
   ProjectConfig,
   ProjectInfo,
+  PublishedApp,
   RoomDescriptor,
   SendBatchResult,
   SharedAppSummary,
@@ -383,6 +384,9 @@ export type ProfileMutationResult =
  */
 export type PossessionOutcome = { proven: true } | { proven: false; reason: string }
 
+/** `pending` while the content scan of the published tree has not settled. */
+export type PublishScan = 'pass' | 'pending'
+
 /**
  * An app's visual theme, as the mythcode renderer takes it. `style` is one of
  * {@link APP_THEME_STYLES}; `hue` and `secondaryHue` are seed hues in DEGREES,
@@ -434,6 +438,9 @@ export type BuildRequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
  *   abandoned, not cancelled at mythcode's end; asking again is the recovery,
  *   and is the normal way to keep a HELD request open.
  *
+ * Any 4xx refusal (`busy`, `evicted`, `refused`) also carries mythcode's
+ * `status`, and its parsed `body` when it sent one.
+ *
  * An unusable `type`, `method` or `query` is NOT in here: it never reaches
  * mythcode, and rejects the way a malformed theme or title does — as a thrown
  * error, the caller's own bug rather than a fact about the moment.
@@ -448,7 +455,7 @@ export type BuildRequestReason = BuildApplyReason | 'refused' | 'unsupported' | 
  */
 export type BuildRequestResult<T = unknown> =
   | { ok: true; status: number; body: T }
-  | { ok: false; reason: BuildRequestReason }
+  | { ok: false; reason: BuildRequestReason; status?: number; body?: unknown }
 
 /**
  * A {@link MethodMap['build.request']} whose `type`, `method` and `query` have
@@ -474,10 +481,14 @@ export interface MethodMap {
   /**
    * Create a new project; the host draws a pooled canonical id server-side (zero
    * network). `projectName` seeds the display name; `parentProjectId` encodes a
-   * parent for collab-server indexing. `open` takes an existing canonical id.
+   * parent for collab-server indexing. `workflow` is free text stored with the
+   * project on its first claim and sent to mythcode as the workflow its app is
+   * built with; it is trimmed, blank means none, and past
+   * {@link PROJECT_WORKFLOW_MAX_CHARS} the create is refused. `open` takes an
+   * existing canonical id.
    */
   'project.create': {
-    params: { projectName?: string; parentProjectId?: string }
+    params: { projectName?: string; parentProjectId?: string; workflow?: string }
     result: ProjectInfo
   }
   /**
@@ -899,12 +910,21 @@ export interface MethodMap {
   // ── publish.* ───────────────────────────────────────────────────────────
 
   /**
-   * Publish the project's HEAD under `shortName`. Requires sign-in (associates a
-   * canonical projectId first). Emits coarse `publish.progress` pushes
-   * throughout. `alias` is `null` when no alias was advanced.
+   * Publish the project under `shortName`. Requires sign-in. Emits coarse
+   * `publish.progress` pushes throughout. `alias` is `null` when no alias was
+   * advanced.
+   *
+   * A project mythcode builds is published by mythcode from the head it pushed;
+   * the project is never opened, claimed or pulled for it. Any other project is
+   * opened and claimed here when it is not open yet, and its HEAD is published.
+   * A mythcode refusal rejects with an {@link RpcError} whose `code` is the
+   * publish worker's own code, or a {@link BuildRequestReason} when mythcode
+   * could not publish at all (`evicted`, `refused`, `not_ready`,
+   * `unavailable`, `timeout`).
    *
    * `possession.proven: false` means the publish itself succeeded but source
    * reads (pull / eject) stayed closed for this tree; republishing retries it.
+   * `scan` and `app` are set when the publishing server reported them.
    */
   'publish.run': {
     params: {
@@ -918,7 +938,13 @@ export interface MethodMap {
        */
       messageCount?: number
     }
-    result: { canonical: string; alias: string | null; possession: PossessionOutcome }
+    result: {
+      canonical: string
+      alias: string | null
+      possession: PossessionOutcome
+      scan?: PublishScan
+      app?: PublishedApp
+    }
   }
 
   // ── kernel.* ────────────────────────────────────────────────────────────
@@ -1840,6 +1866,14 @@ export interface MethodMap {
    * `preview` is the mythcode engine's current app, and is why this can be
    * trusted after a reconnect: the transcript is FIFO-trimmed, so a long build's
    * `preview` event can fall off it while the app is still served.
+   *
+   * `history` is the mythcode engine's durable conversation (AGE-274 Phase 2,
+   * docs/2026-09-21-agent-transcript-durability.md §7) — the maker's own chat,
+   * loaded from the project's R2-backed store (workers/api/src/agent-turns-store.ts)
+   * and grown by every turn since, rather than reconstructed from the bounded
+   * event `transcript`. The store itself keeps every turn; `complete` is false
+   * when the returned window (the newest 30) does not reach back to the first
+   * turn.
    * Wire: `agent.state`.
    */
   'agent.state': {
@@ -1851,6 +1885,7 @@ export interface MethodMap {
           preview?: { url: string; jobId: string }
           /** The theme the mythcode session has applied, or is holding for its app. */
           theme?: AppTheme
+          history?: { turns: { role: 'user' | 'assistant'; content: string }[]; complete: boolean }
         }
       | GatedResult
   }

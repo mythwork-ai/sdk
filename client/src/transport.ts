@@ -4,7 +4,16 @@
 // `{ id, result }` | `{ id, error }` back, id-less `{ type, ... }` pushes
 // routed by prefix.
 
-import { DEFAULT_REQUEST_TIMEOUT_MS, type PushMessage, type RpcResponse } from '@mythwork/protocol'
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  type PushMessage,
+  RpcError,
+  type RpcResponse,
+} from '@mythwork/protocol'
+
+function responseError(message: string, code: string | undefined): Error {
+  return code ? new RpcError(message, code) : new Error(message)
+}
 
 /** Per-call options shared by {@link requestOverPort} and the typed client. */
 export interface RequestOptions {
@@ -75,7 +84,7 @@ export function requestOverPort<R = unknown>(
       const d = e.data as RpcResponse | null
       if (!d || d.id !== id) return
       cleanup()
-      if (d.error) reject(new Error(d.error))
+      if (d.error) reject(responseError(d.error, d.code))
       else resolve(d.result as R)
     }
     const onAbort = () => {
@@ -154,7 +163,7 @@ export function streamOverPort<R = unknown>(
       const d = e.data as RpcResponse | null
       if (!d || d.id !== id) return
       cleanup()
-      if (d.error) reject(new Error(d.error))
+      if (d.error) reject(responseError(d.error, d.code))
       else resolve(d.result as R)
     }
     const delta = (e: MessageEvent) => {

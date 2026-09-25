@@ -233,6 +233,22 @@ export interface AppSummary {
 }
 
 /**
+ * The app row a publish wrote, as the publish worker answers it: the
+ * {@link AppSummary} fields a publish sets, plus the name it was published
+ * under and the tree and commit it now serves.
+ */
+export type PublishedApp = Pick<
+  AppSummary,
+  'projectId' | 'description' | 'theme' | 'category' | 'tags' | 'publishedAt'
+> & {
+  name: string | null
+  tagline: string | null
+  shortName: string
+  rootTree: string
+  commit: string
+}
+
+/**
  * @experimental — API may still evolve before 1.0.
  *
  * The full app detail returned by `explore.getApp`: an {@link AppSummary} plus

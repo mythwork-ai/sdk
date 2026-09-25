@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { RpcError } from '@mythwork/protocol'
 import { PushRouter, requestOverPort, streamOverPort } from './transport'
 
 // A synchronous mock MessagePort: `deliver(data)` fans a `{ data }` MessageEvent
@@ -77,6 +78,16 @@ describe('requestOverPort', () => {
       chan.port2.postMessage({ id: d.id, error: 'boom: not allowed' })
     })
     await expect(requestOverPort(chan.port1, 'x', {})).rejects.toThrow('boom: not allowed')
+  })
+
+  it('rejects with an RpcError carrying the code on an { error, code } reply', async () => {
+    chan.port2.addEventListener('message', e => {
+      const d = e.data as { id: string }
+      chan.port2.postMessage({ id: d.id, error: 'that name is taken', code: 'name_taken' })
+    })
+    const err = await requestOverPort(chan.port1, 'x', {}).catch(e => e)
+    expect(err).toBeInstanceOf(RpcError)
+    expect(err).toMatchObject({ message: 'that name is taken', code: 'name_taken' })
   })
 
   it('rejects with a timeout error when no reply arrives (per-request timeoutMs)', async () => {

@@ -79,6 +79,22 @@ export function parseAppName(value: unknown): string | null {
   return name
 }
 
+/** Longest project workflow accepted, in characters. */
+export const PROJECT_WORKFLOW_MAX_CHARS = 200
+
+/**
+ * Validate an unknown value into the trimmed workflow a project is created
+ * with: `undefined` when absent or blank, `null` when not a string or longer
+ * than {@link PROJECT_WORKFLOW_MAX_CHARS}.
+ */
+export function parseProjectWorkflow(value: unknown): string | undefined | null {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string') return null
+  const workflow = value.trim()
+  if (!workflow) return undefined
+  return workflow.length > PROJECT_WORKFLOW_MAX_CHARS ? null : workflow
+}
+
 /** Longest `type` a {@link MethodMap['build.request']} may name, in characters. */
 export const JOB_REQUEST_TYPE_MAX_CHARS = 200
 

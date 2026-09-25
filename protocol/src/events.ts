@@ -7,7 +7,8 @@
 // Subscribing to the full type (`'fs.changed'`) matches only that exact type.
 
 import type { User } from './data'
-import type { AgentEvent, PossessionOutcome } from './methods'
+import type { PublishedApp } from './data'
+import type { AgentEvent, PossessionOutcome, PublishScan } from './methods'
 
 /**
  * The complete push-event map. Keys are the literal `type` strings; each value
@@ -71,7 +72,10 @@ export interface EventMap {
     canonical?: string
     alias?: string | null
     error?: string
+    code?: string
     possession?: PossessionOutcome
+    scan?: PublishScan
+    app?: PublishedApp
   }
 
   /**

@@ -52,7 +52,14 @@ import {
   parseJobRequestTimeout,
   parseJobRequestType,
 } from '@mythwork/protocol'
-import type { AgentEvent, PushMessage, RpcRequest, RpcResponse, User } from '@mythwork/protocol'
+import {
+  type AgentEvent,
+  type PushMessage,
+  RpcError,
+  type RpcRequest,
+  type RpcResponse,
+  type User,
+} from '@mythwork/protocol'
 import type {
   AppDetail,
   AppSummary,
@@ -1525,7 +1532,10 @@ export function createDevHost(opts?: {
         const result = handler(req.args ?? {}, state, { hostPort, signInAs: opts?.signInAs })
         response = { id: req.id, result }
       } catch (err) {
-        response = { id: req.id, error: err instanceof Error ? err.message : String(err) }
+        response =
+          err instanceof RpcError
+            ? { id: req.id, error: err.message, code: err.code }
+            : { id: req.id, error: err instanceof Error ? err.message : String(err) }
       }
     }
 
