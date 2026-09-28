@@ -8,6 +8,7 @@
 // clean namespaces.
 
 import type {
+  AnalyticsConsent,
   AppDetail,
   AppSort,
   AppSummary,
@@ -906,6 +907,22 @@ export interface MethodMap {
     params: Partial<NotificationPrefs>
     result: NotificationPrefs
   }
+  /**
+   * Read the viewer's analytics consent; `null` = no choice recorded. Signed-in;
+   * first-party apps only. Backing: user_prefs D1.
+   */
+  'profile.getAnalyticsConsent': {
+    params: Record<string, never>
+    result: { analytics: AnalyticsConsent | null }
+  }
+  /**
+   * Record the viewer's analytics consent, overwriting any earlier choice.
+   * Signed-in; first-party apps only. Backing: user_prefs D1.
+   */
+  'profile.setAnalyticsConsent': {
+    params: { analytics: AnalyticsConsent }
+    result: { analytics: AnalyticsConsent }
+  }
 
   // ── publish.* ───────────────────────────────────────────────────────────
 
@@ -1676,7 +1693,6 @@ export interface MethodMap {
     params: { batch: Record<string, unknown>[] }
     result: SendBatchResult
   }
-
   // ── ai.* (mythwork-ai proxy) ────────────────────────────────────────────
   // @experimental — API may still evolve before 1.0. The app-facing surface of
   // the `mythwork-ai` proxy (PR #382): an OpenAI-compatible chat-completions

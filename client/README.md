@@ -127,6 +127,16 @@ if ('forwarded' in res && !res.forwarded) {
 }
 ```
 
+### Analytics consent
+
+```ts
+// The signed-in viewer's analytics consent, stored on their profile.
+// First-party apps only; any other app's call rejects. Signed out, both calls
+// throw 'sign in required'. `null` means no choice has been recorded yet.
+const { analytics } = await sdk.profile.getAnalyticsConsent()
+await sdk.profile.setAnalyticsConsent({ analytics: 'granted' }) // or 'denied'
+```
+
 ### Subscribe to file changes
 
 ```ts
@@ -283,7 +293,7 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.secrets` | `secrets.check`, `secrets.proxyFetch` |
 | `sdk.config` | `config.get` |
 | `sdk.event` | `event.sendBatch` |
-| `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite`, `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs` |
+| `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite`, `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs`, `profile.getAnalyticsConsent`, `profile.setAnalyticsConsent` |
 | `sdk.ai` | `ai.chat`, `ai.complete` — `@experimental`. To build an app, open a mythcode session: `sdk.agent.create({ engine: 'mythcode', projectId })` |
 | `sdk.agent` | `agent.create`, `agent.send`, `agent.answer`, `agent.stop`, `agent.state`, `agent.dispose`; event `agent.event` — `@experimental` |
 | `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.myApps`, `explore.comments`, `explore.addComment` — `@experimental` |

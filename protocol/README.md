@@ -403,6 +403,8 @@ Signed-in-scoped app collections, replacing the frontend's localStorage-only `st
 | `profile.update` | `{ displayName?: string; bio?: string; location?: string; link?: string }` | `ProfileMutationResult` | **Signed-in;** server owns link normalization. Backing: profiles columns |
 | `profile.getNotificationPrefs` | `{}` | `NotificationPrefs` | **Signed-in.** Backing: notification_prefs D1 |
 | `profile.setNotificationPrefs` | `Partial<NotificationPrefs>` | `NotificationPrefs` | **Signed-in;** returns the full updated prefs. Backing: notification_prefs D1 |
+| `profile.getAnalyticsConsent` | `{}` | `{ analytics: AnalyticsConsent \| null }` | **Signed-in; first-party apps only** (the host and the api both check the first-party token). `null` = no choice recorded. Backing: user_prefs D1 |
+| `profile.setAnalyticsConsent` | `{ analytics: AnalyticsConsent }` | `{ analytics: AnalyticsConsent }` | **Signed-in; first-party apps only.** Overwrites any earlier choice. Backing: user_prefs D1 |
 | `profile.submitClaim` | `{ name: string; email: string; handle: string; acceptedTerms: true; survey?: Record<string, unknown> }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result).** One authed call: lead fields + the real platform handle (different handle = atomic rename; handle claim runs before the lead upsert, retry-safe); `survey` is an opaque app blob. Backing: claims + profiles D1 |
 
 > No new events. Live counters (`explore.statsChanged`, `explore.commentAdded`)

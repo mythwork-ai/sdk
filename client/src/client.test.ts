@@ -211,6 +211,18 @@ describe('namespaced helper → wire method mapping', () => {
       'event.sendBatch',
       { batch: [{ message: 'boom' }] },
     ],
+    [
+      'profile.getAnalyticsConsent',
+      () => client.profile.getAnalyticsConsent(),
+      'profile.getAnalyticsConsent',
+      {},
+    ],
+    [
+      'profile.setAnalyticsConsent',
+      () => client.profile.setAnalyticsConsent({ analytics: 'granted' }),
+      'profile.setAnalyticsConsent',
+      { analytics: 'granted' },
+    ],
     ['env.list', () => client.env.list(), 'env.list', {}],
     ['env.open', () => client.env.open(), 'env.open', {}],
     [

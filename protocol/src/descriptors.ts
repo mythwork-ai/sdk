@@ -296,6 +296,14 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     http: { verb: 'PUT', path: '/profile/me/notification-prefs' },
     auth: { signedOut: 'throw', onError: 'throw' },
   },
+  'profile.getAnalyticsConsent': {
+    http: { verb: 'GET', path: '/profile/me/analytics-consent' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'profile.setAnalyticsConsent': {
+    http: { verb: 'PUT', path: '/profile/me/analytics-consent' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
 
   // ── notifications.* ──────────────────────────────────────────────────────
   'notifications.list': {

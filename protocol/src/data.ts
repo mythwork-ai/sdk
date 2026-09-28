@@ -6,12 +6,15 @@
  *  `approved` is the only field the nav strictly needs; timestamps are for
  *  the acceptance funnel. ISO-8601 strings; null until the event occurs.
  *  `inviteCodeHash` is the SHA-256 of the server-derived invite code, present
- *  only for approved-but-not-yet-accepted users (null otherwise). */
+ *  only for approved-but-not-yet-accepted users (null otherwise).
+ *  `suspended` is true once an admin suspends the account; absent from hosts
+ *  that predate it. */
 export interface UserAccess {
   approved: boolean
   approvedAt: string | null
   acceptedAt: string | null
   inviteCodeHash: string | null
+  suspended?: boolean
 }
 
 /**
@@ -180,6 +183,9 @@ export type SendBatchResult = Ok | { ok: true; forwarded: false; reason: SendBat
  * differ only in the follow-up to offer.
  */
 export type SendBatchRefusalReason = 'sign_in_required' | 'rate_limited'
+
+/** The viewer's analytics-consent choice, stored on their profile. */
+export type AnalyticsConsent = 'granted' | 'denied'
 
 // ── explore surface ─────────────────────────────────────────────────────────
 // @experimental — API may still evolve before 1.0.

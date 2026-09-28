@@ -713,6 +713,20 @@ export class MythworkClient {
       opts?: RequestOptions,
     ) => this.request('profile.setNotificationPrefs', params, opts),
     /**
+     * Read the viewer's analytics consent; `null` = no choice recorded.
+     * Signed-in; first-party apps only. Wire: `profile.getAnalyticsConsent`.
+     */
+    getAnalyticsConsent: (opts?: RequestOptions) =>
+      this.request('profile.getAnalyticsConsent', {}, opts),
+    /**
+     * Record the viewer's analytics consent. Signed-in; first-party apps only.
+     * Wire: `profile.setAnalyticsConsent`.
+     */
+    setAnalyticsConsent: (
+      params: MethodParams<'profile.setAnalyticsConsent'>,
+      opts?: RequestOptions,
+    ) => this.request('profile.setAnalyticsConsent', params, opts),
+    /**
      * @experimental — API may still evolve before 1.0. Submit the full authed
      * claim (lead fields + the real platform handle + opaque `survey` blob).
      * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }` with zero
