@@ -166,19 +166,6 @@ export interface AgentSessionOptions {
   engine?: 'standard' | 'mythcode'
   projectId?: string
   jobId?: string
-  // NOTE: there is deliberately NO `designUpgrade` here, and it must not come back.
-  // It was added as a per-session force and that was a hole: `agent.*` is reachable
-  // from the sandboxed app iframe (router.ts routes the prefix and passes
-  // `envelope.args` through), the app is MODEL-AUTHORED code, and the field sat at
-  // rank 1 of the resolution order — so a generated app could pin the gate on with
-  // `agent.create({ designUpgrade: true })`, outranking the user's own choice. It
-  // was also a small credit-amplification vector, since the gate spends extra
-  // model rounds against the signed-in user's balance.
-  //
-  // The two legitimate producers are both host-side and stay there: the dev hosts set
-  // `HostFrameConfig.designUpgrade` (a trusted host config, not an app param) which
-  // becomes the host DEFAULT, and tests pass the internal `explicit` argument to
-  // resolveDesignUpgradeDecision directly.
 }
 
 /**
@@ -417,6 +404,9 @@ export type BuildApplyReason = 'pending' | 'busy' | 'not_ready' | 'evicted' | 'u
 /** What a `build.*` call did. Nothing is stored, so a refusal always says why. */
 export type BuildApplyResult = { applied: true } | { applied: false; reason: BuildApplyReason }
 
+/** Most pids one {@link MethodMap['build.projectJobs']} may name. */
+export const BUILD_PROJECT_JOBS_MAX_PIDS = 100
+
 /** Every HTTP method {@link MethodMap['build.request']} may use. */
 export type BuildRequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -457,6 +447,24 @@ export type BuildRequestReason = BuildApplyReason | 'refused' | 'unsupported' | 
 export type BuildRequestResult<T = unknown> =
   | { ok: true; status: number; body: T }
   | { ok: false; reason: BuildRequestReason; status?: number; body?: unknown }
+
+/** A picture of a mythcode job's app, as {@link MethodMap['build.screenshot']} returns it. */
+export interface BuildScreenshot {
+  type: string
+  bytes: Uint8Array
+}
+
+/** Largest picture {@link MethodMap['build.screenshot']} carries back, in bytes. */
+export const BUILD_SCREENSHOT_MAX_BYTES = 4 * 1024 * 1024
+
+/**
+ * A project's newest mythcode job, as {@link MethodMap['build.projectJobs']}
+ * reports it.
+ */
+export interface BuildProjectJob {
+  jobId: string
+  state: string
+}
 
 /**
  * A {@link MethodMap['build.request']} whose `type`, `method` and `query` have
@@ -626,6 +634,26 @@ export interface MethodMap {
       timeoutMs?: number
     }
     result: BuildRequestResult
+  }
+  /**
+   * The newest screenshot mythcode took of job `jobId`'s app, which must be a
+   * job of project `pid`; `null` when it has none or no longer holds the job.
+   * Needs no session. Requires a first-party, signed-in caller. The bytes are
+   * capped at `BUILD_SCREENSHOT_MAX_BYTES`.
+   */
+  'build.screenshot': {
+    params: { pid: string; jobId: string }
+    result: { image: BuildScreenshot | null }
+  }
+  /**
+   * The newest mythcode job of each project in `pids`, keyed by pid. A project
+   * mythcode holds no job for, or one the caller cannot write, is absent. Needs
+   * no session. Requires a first-party, signed-in caller; at most
+   * `BUILD_PROJECT_JOBS_MAX_PIDS` pids.
+   */
+  'build.projectJobs': {
+    params: { pids: string[] }
+    result: { jobs: Record<string, BuildProjectJob> }
   }
 
   // ── fs.* file ops ───────────────────────────────────────────────────────

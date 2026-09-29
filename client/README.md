@@ -283,7 +283,7 @@ strings internally. Legacy strings are never exposed to application code.
 | Client namespace | Wire methods / events covered |
 |---|---|
 | `sdk.project` | `project.*` (incl. `project.remix`), `publish.run` (as `sdk.project.publish`) |
-| `sdk.build` | `build.applyTheme`, `build.setTitle` — restyle and set the title of the app a `sdk.agent` mythcode session is running; `build.request` — the generic form of those two, sending one typed request to any of that job's other routes and returning its answer |
+| `sdk.build` | `build.applyTheme`, `build.setTitle` — restyle and set the title of the app a `sdk.agent` mythcode session is running; `build.request` — the generic form of those two, sending one typed request to any of that job's other routes and returning its answer; event `build.event` — each raw mythcode job event of that session — `@experimental` |
 | `sdk.fs` | `fs.read`, `fs.write`, `fs.list`, `fs.exists`, `fs.rename`, `fs.delete`; event `fs.changed` |
 | `sdk.git` | `fs.commit`, `fs.log`, `fs.showVersion`, `fs.diff`, `fs.checkout`, `fs.head`, `fs.hasUncommittedChanges`, `fs.commitTree`, `fs.deleteCommit`, `fs.editCommitMessage`, `fs.flushDirty` |
 | `sdk.collab` | `collab.openRoom` |

@@ -283,6 +283,18 @@ export class MythworkClient {
           opts?.timeoutMs ??
           (params.timeoutMs ?? JOB_REQUEST_DEFAULT_TIMEOUT_MS) + JOB_REQUEST_REPLY_MARGIN_MS,
       }) as Promise<BuildRequestResult<T>>,
+    /**
+     * The newest screenshot of job `jobId`'s app, `null` when there is none.
+     * The job must belong to project `pid`. Wire: `build.screenshot`.
+     */
+    screenshot: (params: MethodParams<'build.screenshot'>, opts?: RequestOptions) =>
+      this.request('build.screenshot', params, opts),
+    /**
+     * The newest mythcode job of each project in `pids`, keyed by pid; a
+     * project without one is absent. Wire: `build.projectJobs`.
+     */
+    projectJobs: (params: MethodParams<'build.projectJobs'>, opts?: RequestOptions) =>
+      this.request('build.projectJobs', params, opts),
   }
 
   // ── fs.* file ops ─────────────────────────────────────────────────────────

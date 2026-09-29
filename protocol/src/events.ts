@@ -100,6 +100,19 @@ export interface EventMap {
   }
 
   /**
+   * @experimental One mythcode job event, unchanged, as `GET /jobs/{id}/events`
+   * served it to a `mythcode` agent session. `id` is the SSE event id, so a
+   * consumer can drop a replayed event. Pushed beside, never instead of, the
+   * session's `agent.event` stream, and outside its `seq`.
+   */
+  'build.event': {
+    sessionId: string
+    jobId: string
+    id: string | null
+    event: Record<string, unknown>
+  }
+
+  /**
    * The host wants the app to move to a different in-app path — issued when
    * the user presses the browser's back/forward at the top level, or the host
    * resolves a fresh top-level load whose real address bar already pointed

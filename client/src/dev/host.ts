@@ -45,6 +45,7 @@
 import {
   classifyOutboundHost,
   isLocalOutbound,
+  jobBelongsToProject,
   parseAppName,
   parseAppTheme,
   parseJobRequestMethod,
@@ -1165,6 +1166,18 @@ const handlers: Record<string, Handler> = {
       throw new Error('build.request: timeoutMs invalid')
     }
     return { ok: false, reason: 'unavailable' }
+  },
+
+  'build.screenshot'(args) {
+    if (!jobBelongsToProject(String(args['jobId'] ?? ''), String(args['pid'] ?? ''))) {
+      throw new Error('build.screenshot: jobId invalid')
+    }
+    return { image: null }
+  },
+
+  'build.projectJobs'(args) {
+    if (!Array.isArray(args['pids'])) throw new Error('build.projectJobs: pids invalid')
+    return { jobs: {} }
   },
 
   // ── fs (shared store; writes push fs.changed to other clients) ───────────────
