@@ -3,6 +3,7 @@
 // cross-client sharing (shared commit log + fs.changed pushes) that an editor
 // app's multiplayer needs.
 
+import type { GeneratedStyleId } from '@mythwork/protocol'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { connect } from '../index'
 import { MythworkClient } from '../client'
@@ -154,6 +155,17 @@ describe('dev host — single-client project/fs/git', () => {
       applied: false,
       reason: 'unavailable',
     })
+  })
+
+  // No mythcode job here, so no Stage 0 ever offered a generated preset: the
+  // real host answers the same for one with no job behind it.
+  it('build.applyTheme answers unknown_style for a generated style', async () => {
+    expect(
+      await sdk.build.applyTheme({
+        sessionId: 'dev-session-1',
+        theme: { style: 'dusk-garden' as GeneratedStyleId, hue: 10, mode: 'dark' },
+      }),
+    ).toEqual({ applied: false, reason: 'unknown_style' })
   })
 
   it('build.* still refuses what production refuses', async () => {

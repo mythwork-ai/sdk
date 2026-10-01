@@ -187,6 +187,12 @@ export type SendBatchRefusalReason = 'sign_in_required' | 'rate_limited'
 /** The viewer's analytics-consent choice, stored on their profile. */
 export type AnalyticsConsent = 'granted' | 'denied'
 
+/** A viewer's Discord link; `username` is present when `linked`. */
+export interface DiscordLink {
+  linked: boolean
+  username?: string
+}
+
 // ── explore surface ─────────────────────────────────────────────────────────
 // @experimental — API may still evolve before 1.0.
 // The shapes below back the `explore.*` and `profile.*` methods.
@@ -269,6 +275,8 @@ export type AppDetail = AppSummary & {
   makersNote?: string
   remixCount: number
   remixedFrom: { projectId: string; name: string } | null
+  /** Signed-in favorites plus signed-out loves from the published-app badge. */
+  loveCount?: number
 }
 
 /**

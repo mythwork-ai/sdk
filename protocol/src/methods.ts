@@ -9,6 +9,7 @@
 
 import type {
   AnalyticsConsent,
+  DiscordLink,
   AppDetail,
   AppSort,
   AppSummary,
@@ -42,7 +43,7 @@ import type {
   User,
   UserAccess,
 } from './data'
-import type { AppThemeStyle } from './app-metadata'
+import type { AppThemeStyle, GeneratedStyleId } from './app-metadata'
 import type { Id, PageResult, SchemaRow } from './contract/db-client.interface'
 import type { ListQuery, EntityFilter } from './contract/list-query.v1'
 import type { CountResult } from './contract/count-result.v1'
@@ -236,16 +237,15 @@ export type AgentEvent =
       kind: 'build-suggestions'
       /** Candidate names, best first. */
       names?: string[]
-      /** Presets mythcode will accept at `build.applyTheme`, in its order. */
-      themes?: {
-        id: string
-        label?: string
-        mode?: string
-        hue?: number
-        secondaryHue?: number
-        /** Stage 0's own pick for this app. At most one. */
-        recommended?: boolean
-      }[]
+      /**
+       * Presets offered for this app, in mythcode's order. `id` is a builtin
+       * style or one Stage 0 generated for THIS run; either can be sent as
+       * `build.applyTheme`'s `style` while the session runs this job, and a
+       * generated one is refused (`unknown_style`) once it no longer does.
+       * Each preset carries every knob mythcode renders it with, so a client
+       * can preview it before applying it; see {@link SuggestedTheme}.
+       */
+      themes?: SuggestedTheme[]
       palette?: { primaryHue: number; secondaryHue: number; mood?: string }
       /** Region roles, each with the child roles under it. */
       shell?: { role: string; children?: { role: string; text?: string }[] }[]
@@ -376,15 +376,69 @@ export type PossessionOutcome = { proven: true } | { proven: false; reason: stri
 export type PublishScan = 'pass' | 'pending'
 
 /**
+ * One preset in a `build-suggestions` event's `themes`: mythcode's Stage 0
+ * `RawPreset`, re-validated by the host against mythcode's own grammar. All or
+ * nothing: a preset with one field that does not hold up is dropped whole, so
+ * every field below that is not marked optional is always present.
+ *
+ * The CSS fields (`radius`, `space`, `shadow`, `fontSans`, `fontDisplay`,
+ * `fontSizes`) are each safe as ONE custom-property value set with
+ * `style.setProperty`: none can contain `;`, `{`, `}`, `<` or a newline. Never
+ * splice them into stylesheet text. `label` and `description` are unrestricted
+ * text: render them as text, never as markup or CSS.
+ */
+export interface SuggestedTheme {
+  id: AppThemeStyle | GeneratedStyleId
+  /** Non-empty, at most 24 characters. */
+  label: string
+  /** At most 120 characters; absent when mythcode sent none. */
+  description?: string
+  /** Absent: the preset leaves the client's own mode alone. */
+  mode?: 'light' | 'dark'
+  /** Seed hue in degrees, any finite number. Absent: keep the client's own palette. */
+  hue?: number
+  /** As {@link SuggestedTheme.hue}. */
+  secondaryHue?: number
+  /** `--radius-sm/md/lg`: CSS lengths (`px`, `rem` or `em`), small to large. */
+  radius: [string, string, string]
+  /** `--space-1..4`: CSS lengths, as {@link SuggestedTheme.radius}. */
+  space: [string, string, string, string]
+  /**
+   * `--shadow-sm/md`: each `none`, or one to three comma-separated layers of
+   * `[inset ]x y[ blur[ spread]] <color>` (offsets in px or unitless; color
+   * `rgb()`/`rgba()`, `#hex` or `oklch()`).
+   */
+  shadow: [string, string]
+  /** The body font: a CSS font stack of plain or double-quoted family names. Load nothing for it. */
+  fontSans: string
+  /**
+   * The display (heading) face: ONE family name, not a stack, from mythcode's
+   * Google Fonts set (e.g. `Fraunces`). A client must load it before rendering
+   * it — mythcode does not send a stylesheet URL — and should fall back to
+   * {@link SuggestedTheme.fontSans} until it has. Absent: headings use `fontSans`.
+   */
+  fontDisplay?: string
+  /** `--font-size-sm/md/lg/xl`: CSS lengths, as {@link SuggestedTheme.radius}. */
+  fontSizes: [string, string, string, string]
+  /** Chroma multiplier, 0.05 to 1.6; 1 leaves the palette as it is. */
+  chromaScale: number
+  /** Borders collapse into the surface colour. */
+  borderless: boolean
+  /** Stage 0's own pick for this app. At most one. */
+  recommended?: boolean
+}
+
+/**
  * An app's visual theme, as the mythcode renderer takes it. `style` is one of
- * {@link APP_THEME_STYLES}; `hue` and `secondaryHue` are seed hues in DEGREES,
+ * {@link APP_THEME_STYLES}, or a {@link GeneratedStyleId} the session's current
+ * job offered in `build-suggestions`; `hue` and `secondaryHue` are seed hues in DEGREES,
  * any finite number (the renderer folds them into [0, 360) itself), and an
  * omitted `secondaryHue` is derived as `hue + 150`. `mode` picks the token set.
  *
  * Not `ProjectConfig`'s `theme`, which is the catalog card's colour.
  */
 export interface AppTheme {
-  style: AppThemeStyle
+  style: AppThemeStyle | GeneratedStyleId
   hue: number
   secondaryHue?: number
   mode: 'light' | 'dark'
@@ -398,11 +452,34 @@ export interface AppTheme {
  * - `evicted`     — the app was reopened; applied on the new job.
  * - `not_ready`   — the app has no files yet; retry.
  * - `unavailable` — the build server did not answer; retry.
+ * - `unknown_style` — the style is a generated id the session's current job did
+ *   not produce, or no longer has: that run's app was evicted or replaced, the
+ *   build server restarted and forgot it, or no job exists yet. Not held; pick
+ *   again from the current job's `build-suggestions`.
  */
-export type BuildApplyReason = 'pending' | 'busy' | 'not_ready' | 'evicted' | 'unavailable'
+export type BuildApplyReason =
+  | 'pending'
+  | 'busy'
+  | 'not_ready'
+  | 'evicted'
+  | 'unavailable'
+  | 'unknown_style'
 
-/** What a `build.*` call did. Nothing is stored, so a refusal always says why. */
-export type BuildApplyResult = { applied: true } | { applied: false; reason: BuildApplyReason }
+/**
+ * What a `build.*` call did. Nothing is stored, so a refusal always says why.
+ *
+ * `busyForMs` may be set when `reason` is `busy`, and only then: how long, in
+ * milliseconds, the turn holding the app has been running. It is set when the
+ * host itself refused because its own turn owns the app, and absent when the
+ * build server answered busy (a 409 with no local turn to time). A client can
+ * use it to show "still finishing your last edit (Ns)" instead of an
+ * unexplained refusal —
+ * without it, a wedged turn (bounded by the 15-minute build watchdog) makes
+ * `busy` indistinguishable from permanently stuck.
+ */
+export type BuildApplyResult =
+  | { applied: true }
+  | { applied: false; reason: BuildApplyReason; busyForMs?: number }
 
 /** Most pids one {@link MethodMap['build.projectJobs']} may name. */
 export const BUILD_PROJECT_JOBS_MAX_PIDS = 100
@@ -411,7 +488,7 @@ export const BUILD_PROJECT_JOBS_MAX_PIDS = 100
 export type BuildRequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 /**
- * Why a `build.request` carried no answer. The five {@link BuildApplyReason}
+ * Why a `build.request` carried no answer. Five of the {@link BuildApplyReason}
  * values mean what they mean there — `pending` no app yet, `busy` a turn owns
  * it, `not_ready` no files yet, `evicted` reopened under a new job,
  * `unavailable` the build server did not answer — and NONE of them is held and
@@ -436,17 +513,22 @@ export type BuildRequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
  * mythcode, and rejects the way a malformed theme or title does — as a thrown
  * error, the caller's own bug rather than a fact about the moment.
  */
-export type BuildRequestReason = BuildApplyReason | 'refused' | 'unsupported' | 'timeout'
+export type BuildRequestReason =
+  | Exclude<BuildApplyReason, 'unknown_style'>
+  | 'refused'
+  | 'unsupported'
+  | 'timeout'
 
 /**
  * What one {@link MethodMap['build.request']} settled to. `status` is the HTTP
  * status mythcode answered with, and `body` is its parsed answer — `unknown` to
  * the SDK by design, and typed by the caller, which shares the contract for
- * that `type` with the engine.
+ * that `type` with the engine. `busyForMs` means what it does on
+ * {@link BuildApplyResult}.
  */
 export type BuildRequestResult<T = unknown> =
   | { ok: true; status: number; body: T }
-  | { ok: false; reason: BuildRequestReason; status?: number; body?: unknown }
+  | { ok: false; reason: BuildRequestReason; status?: number; body?: unknown; busyForMs?: number }
 
 /** A picture of a mythcode job's app, as {@link MethodMap['build.screenshot']} returns it. */
 export interface BuildScreenshot {
@@ -575,7 +657,8 @@ export interface MethodMap {
    * Restyle the app the mythcode session is running with `theme`. Answers
    * `{ applied: true }` when the running app took it, or
    * `{ applied: false, reason }`; `pending`, `busy` and `evicted` mean the host
-   * holds the theme and applies it when the app is ready. Requires a
+   * holds the theme and applies it when the app is ready; `unknown_style` means
+   * a generated style the current job did not produce, and is not held. Requires a
    * first-party, signed-in caller and a session this app created.
    */
   'build.applyTheme': {
@@ -950,6 +1033,31 @@ export interface MethodMap {
   'profile.setAnalyticsConsent': {
     params: { analytics: AnalyticsConsent }
     result: { analytics: AnalyticsConsent }
+  }
+  /**
+   * The viewer's linked Discord account. Signed-in; first-party apps only.
+   * Backing: users D1.
+   */
+  'profile.getDiscord': {
+    params: Record<string, never>
+    result: DiscordLink
+  }
+  /**
+   * Link a Discord account and offer the Mythwork Discord: the host shows a
+   * dialog whose button opens Discord's authorize window; approving records the
+   * link, then the same window opens the Mythwork server's invite for the user
+   * to accept. Returns the stored link (unchanged if the user cancels). A
+   * Discord account links to one myth.work account at a time.
+   * Signed-in; first-party apps only.
+   */
+  'profile.linkDiscord': {
+    params: Record<string, never>
+    result: DiscordLink
+  }
+  /** Remove the viewer's Discord link. Signed-in; first-party apps only. */
+  'profile.unlinkDiscord': {
+    params: Record<string, never>
+    result: { linked: false }
   }
 
   // ── publish.* ───────────────────────────────────────────────────────────

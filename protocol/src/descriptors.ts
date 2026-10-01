@@ -297,11 +297,19 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     auth: { signedOut: 'throw', onError: 'throw' },
   },
   'profile.getAnalyticsConsent': {
-    http: { verb: 'GET', path: '/profile/me/analytics-consent' },
+    http: { verb: 'GET', path: '/profile/me/consent' },
     auth: { signedOut: 'throw', onError: 'throw' },
   },
   'profile.setAnalyticsConsent': {
-    http: { verb: 'PUT', path: '/profile/me/analytics-consent' },
+    http: { verb: 'PUT', path: '/profile/me/consent' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'profile.getDiscord': {
+    http: { verb: 'GET', path: '/profile/me/discord' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'profile.unlinkDiscord': {
+    http: { verb: 'DELETE', path: '/profile/me/discord' },
     auth: { signedOut: 'throw', onError: 'throw' },
   },
 

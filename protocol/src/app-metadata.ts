@@ -6,13 +6,12 @@
 import type { AppTheme, BuildRequestMethod } from './methods'
 
 /**
- * Every style id an {@link AppTheme} may name: mythcode's eight builtin presets,
- * in its own order (`elegant` is labelled "Editorial" in its UI).
+ * mythcode's eight builtin presets, in its own order (`elegant` is labelled
+ * "Editorial" in its UI). Always accepted, on any job.
  *
- * A run can also generate presets of its own and offer them through a
- * `theme_options` event; those ids exist only inside the run that produced them
- * — mythcode answers 400 for one on any other job — so they are not accepted
- * here. Widening this list later is additive.
+ * An {@link AppTheme} may also name a GENERATED preset — one a run's Stage 0
+ * produced and offered through a `theme_options` event. See
+ * {@link isGeneratedStyleId}.
  */
 export const APP_THEME_STYLES = [
   'modern',
@@ -37,6 +36,26 @@ export function isAppThemeStyle(value: unknown): value is AppThemeStyle {
   return typeof value === 'string' && (APP_THEME_STYLES as readonly string[]).includes(value)
 }
 
+/**
+ * A generated preset's id: the shape mythcode's `internal/theme/generated.go`
+ * mints, and never a builtin id, so this and {@link isAppThemeStyle} are
+ * disjoint. A string, not a union: generated ids are open-ended.
+ */
+export type GeneratedStyleId = string & { readonly __brand: 'GeneratedStyleId' }
+
+/** mythcode's own pattern for a generated preset id. */
+const GENERATED_STYLE_ID = /^[a-z][a-z0-9-]{1,31}$/
+
+/**
+ * Narrow a string to a {@link GeneratedStyleId}. This is the SHAPE only: such
+ * an id exists solely inside the job whose Stage 0 produced it, and mythcode
+ * answers 400 for it on any other job — so the host, which knows the job, is
+ * what decides whether one can still be sent (`unknown_style` when not).
+ */
+export function isGeneratedStyleId(value: unknown): value is GeneratedStyleId {
+  return typeof value === 'string' && GENERATED_STYLE_ID.test(value) && !isAppThemeStyle(value)
+}
+
 /** Exactly the fields an {@link AppTheme} may carry. */
 const THEME_KEYS = new Set(['style', 'hue', 'secondaryHue', 'mode'])
 
@@ -54,7 +73,7 @@ export function parseAppTheme(value: unknown): AppTheme | null {
   for (const key of Object.keys(t)) {
     if (!THEME_KEYS.has(key)) return null
   }
-  if (!isAppThemeStyle(t.style)) return null
+  if (!isAppThemeStyle(t.style) && !isGeneratedStyleId(t.style)) return null
   if (typeof t.hue !== 'number' || !Number.isFinite(t.hue)) return null
   if (t.mode !== 'light' && t.mode !== 'dark') return null
   const theme: AppTheme = { style: t.style, hue: t.hue, mode: t.mode }

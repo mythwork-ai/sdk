@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   APP_THEME_STYLES,
+  isAppThemeStyle,
+  isGeneratedStyleId,
   JOB_REQUEST_QUERY_MAX_CHARS,
   JOB_REQUEST_QUERY_MAX_PARAMS,
   JOB_REQUEST_TYPE_MAX_CHARS,
@@ -32,17 +34,61 @@ describe('parseAppTheme', () => {
       secondaryHue: 0,
       mode: 'dark',
     })
-    // A generated per-run preset id exists only inside the run that made it.
-    expect(parseAppTheme({ style: 'gen-a1b2c3', hue: 1, mode: 'light' })).toBeNull()
     expect(parseAppTheme({ style: 'modern', hue: 1 })).toBeNull()
     expect(parseAppTheme({ style: 'modern', hue: Number.NaN, mode: 'light' })).toBeNull()
     expect(parseAppTheme({ style: 'modern', hue: 1, mode: 'sepia' })).toBeNull()
+  })
+
+  it("accepts a generated preset id by its shape; whether this job has it is the host's call", () => {
+    expect(parseAppTheme({ style: 'dusk-garden', hue: 1, mode: 'dark' })).toEqual({
+      style: 'dusk-garden',
+      hue: 1,
+      mode: 'dark',
+    })
+    const longest = `a${'b'.repeat(31)}`
+    expect(parseAppTheme({ style: longest, hue: 1, mode: 'light' })?.style).toBe(longest)
+  })
+
+  it('rejects a style that is neither builtin nor generated-shaped', () => {
+    for (const style of [
+      'a', // too short: the pattern wants two characters at least
+      `a${'b'.repeat(32)}`, // 33 characters
+      '9lives', // must start with a letter
+      '-dash',
+      'Dusk', // upper case
+      'dusk_garden', // underscore is not in the alphabet
+      'dusk garden',
+      '',
+      42,
+      null,
+    ]) {
+      expect(parseAppTheme({ style, hue: 1, mode: 'light' }), String(style)).toBeNull()
+    }
+  })
+
+  it('REFUSES an unknown key on a generated style too', () => {
+    expect(
+      parseAppTheme({ style: 'dusk-garden', hue: 1, mode: 'dark', radius: [1, 2, 3] }),
+    ).toBeNull()
   })
 
   it('REFUSES an unknown key rather than stripping it', () => {
     // The typo this exists for: `secondaryhue` would otherwise be dropped and
     // the caller told the theme applied, with an accent they never chose.
     expect(parseAppTheme({ style: 'modern', hue: 10, mode: 'light', secondaryhue: 20 })).toBeNull()
+  })
+})
+
+describe('isGeneratedStyleId', () => {
+  it('is disjoint from the builtins, although every builtin fits the pattern', () => {
+    for (const style of APP_THEME_STYLES) {
+      expect(isGeneratedStyleId(style), style).toBe(false)
+      expect(isAppThemeStyle(style), style).toBe(true)
+    }
+    expect(isGeneratedStyleId('dusk-garden')).toBe(true)
+    expect(isAppThemeStyle('dusk-garden')).toBe(false)
+    expect(isGeneratedStyleId('Dusk')).toBe(false)
+    expect(isGeneratedStyleId(undefined)).toBe(false)
   })
 })
 

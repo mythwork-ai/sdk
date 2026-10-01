@@ -137,6 +137,18 @@ const { analytics } = await sdk.profile.getAnalyticsConsent()
 await sdk.profile.setAnalyticsConsent({ analytics: 'granted' }) // or 'denied'
 ```
 
+### Join the Discord
+
+```ts
+// First-party apps only. linkDiscord shows a host dialog; its button opens
+// Discord's authorize window. Approving links the account, then the same
+// window opens the Mythwork server's invite for the user to accept. Resolves
+// once that window closes.
+const { linked, username } = await sdk.profile.linkDiscord()
+await sdk.profile.getDiscord() // { linked, username? }
+await sdk.profile.unlinkDiscord()
+```
+
 ### Subscribe to file changes
 
 ```ts
@@ -293,7 +305,7 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.secrets` | `secrets.check`, `secrets.proxyFetch` |
 | `sdk.config` | `config.get` |
 | `sdk.event` | `event.sendBatch` |
-| `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite`, `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs`, `profile.getAnalyticsConsent`, `profile.setAnalyticsConsent` |
+| `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite`, `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs`, `profile.getAnalyticsConsent`, `profile.setAnalyticsConsent`, `profile.getDiscord`, `profile.linkDiscord`, `profile.unlinkDiscord` |
 | `sdk.ai` | `ai.chat`, `ai.complete` — `@experimental`. To build an app, open a mythcode session: `sdk.agent.create({ engine: 'mythcode', projectId })` |
 | `sdk.agent` | `agent.create`, `agent.send`, `agent.answer`, `agent.stop`, `agent.state`, `agent.dispose`; event `agent.event` — `@experimental` |
 | `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.myApps`, `explore.comments`, `explore.addComment` — `@experimental` |

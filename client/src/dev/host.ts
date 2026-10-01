@@ -44,6 +44,7 @@
 
 import {
   classifyOutboundHost,
+  isAppThemeStyle,
   isLocalOutbound,
   jobBelongsToProject,
   parseAppName,
@@ -1142,9 +1143,14 @@ const handlers: Record<string, Handler> = {
   // renderer cannot be reached. Validation still runs, so a missing session id,
   // a malformed theme or name, or a route a request may not name fails here
   // exactly as it would in the browser.
+  //
+  // A generated style is `unknown_style`, as the real host answers for one with
+  // no job behind it: with no mythcode job here, no Stage 0 ever offered it.
   'build.applyTheme'(args) {
     requireDevBuildSession('build.applyTheme', args)
-    if (parseAppTheme(args['theme']) === null) throw new Error('build.applyTheme: theme invalid')
+    const theme = parseAppTheme(args['theme'])
+    if (theme === null) throw new Error('build.applyTheme: theme invalid')
+    if (!isAppThemeStyle(theme.style)) return { applied: false, reason: 'unknown_style' }
     return { applied: false, reason: 'unavailable' }
   },
 

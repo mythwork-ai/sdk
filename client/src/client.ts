@@ -739,6 +739,31 @@ export class MythworkClient {
       opts?: RequestOptions,
     ) => this.request('profile.setAnalyticsConsent', params, opts),
     /**
+     * The viewer's linked Discord account. Signed-in; first-party apps only.
+     * Wire: `profile.getDiscord`.
+     */
+    getDiscord: (opts?: RequestOptions) => this.request('profile.getDiscord', {}, opts),
+    /**
+     * Link a Discord account through a host dialog and Discord's authorize
+     * window, which then opens the Mythwork server's invite for the user to
+     * accept; resolves with the stored link once the window closes. Signed-in;
+     * first-party apps only. Wire: `profile.linkDiscord`.
+     *
+     * Budgeted at 12 minutes: the host waits up to 10 for the Discord window
+     * (the link's lifetime), plus the time the user spends on the dialog.
+     */
+    linkDiscord: (opts?: RequestOptions) =>
+      this.request(
+        'profile.linkDiscord',
+        {},
+        {
+          ...opts,
+          timeoutMs: opts?.timeoutMs ?? 12 * 60_000,
+        },
+      ),
+    /** Remove the viewer's Discord link. Wire: `profile.unlinkDiscord`. */
+    unlinkDiscord: (opts?: RequestOptions) => this.request('profile.unlinkDiscord', {}, opts),
+    /**
      * @experimental — API may still evolve before 1.0. Submit the full authed
      * claim (lead fields + the real platform handle + opaque `survey` blob).
      * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }` with zero
