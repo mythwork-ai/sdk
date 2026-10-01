@@ -764,6 +764,18 @@ export class MythworkClient {
     /** Remove the viewer's Discord link. Wire: `profile.unlinkDiscord`. */
     unlinkDiscord: (opts?: RequestOptions) => this.request('profile.unlinkDiscord', {}, opts),
     /**
+     * When the viewer said they want to be a Founding Creator, or null.
+     * Signed-in; first-party apps only. Wire: `profile.getFoundingInterest`.
+     */
+    getFoundingInterest: (opts?: RequestOptions) =>
+      this.request('profile.getFoundingInterest', {}, opts),
+    /**
+     * Record that the viewer wants to be a Founding Creator; one-way, a repeat
+     * keeps the first timestamp. Wire: `profile.markFoundingInterest`.
+     */
+    markFoundingInterest: (opts?: RequestOptions) =>
+      this.request('profile.markFoundingInterest', {}, opts),
+    /**
      * @experimental — API may still evolve before 1.0. Submit the full authed
      * claim (lead fields + the real platform handle + opaque `survey` blob).
      * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }` with zero

@@ -408,6 +408,8 @@ Signed-in-scoped app collections, replacing the frontend's localStorage-only `st
 | `profile.getDiscord` | `{}` | `DiscordLink` | **Signed-in; first-party apps only.** `{ linked, username? }`. Backing: users D1 |
 | `profile.linkDiscord` | `{}` | `DiscordLink` | **Signed-in; first-party apps only.** Host dialog, then Discord's sign-in window; resolves with the stored link when the window closes. A Discord account links to one account at a time |
 | `profile.unlinkDiscord` | `{}` | `{ linked: false }` | **Signed-in; first-party apps only.** |
+| `profile.getFoundingInterest` | `{}` | `FoundingInterest` | **Signed-in; first-party apps only.** `{ interestedAt: string \| null }` (ISO). Backing: users D1 |
+| `profile.markFoundingInterest` | `{}` | `{ interestedAt: string }` | **Signed-in; first-party apps only.** One-way; a repeat keeps the first timestamp. Refused for a suspended account. Backing: users D1 |
 | `profile.submitClaim` | `{ name: string; email: string; handle: string; acceptedTerms: true; survey?: Record<string, unknown> }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result).** One authed call: lead fields + the real platform handle (different handle = atomic rename; handle claim runs before the lead upsert, retry-safe); `survey` is an opaque app blob. Backing: claims + profiles D1 |
 
 > No new events. Live counters (`explore.statsChanged`, `explore.commentAdded`)

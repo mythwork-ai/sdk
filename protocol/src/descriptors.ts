@@ -312,6 +312,14 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     http: { verb: 'DELETE', path: '/profile/me/discord' },
     auth: { signedOut: 'throw', onError: 'throw' },
   },
+  'profile.getFoundingInterest': {
+    http: { verb: 'GET', path: '/profile/me/founding-interest' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'profile.markFoundingInterest': {
+    http: { verb: 'POST', path: '/profile/me/founding-interest' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
 
   // ── notifications.* ──────────────────────────────────────────────────────
   'notifications.list': {

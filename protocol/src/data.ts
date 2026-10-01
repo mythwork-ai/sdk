@@ -193,6 +193,11 @@ export interface DiscordLink {
   username?: string
 }
 
+/** When the viewer said they want to be a Founding Creator (ISO), or null. */
+export interface FoundingInterest {
+  interestedAt: string | null
+}
+
 // ── explore surface ─────────────────────────────────────────────────────────
 // @experimental — API may still evolve before 1.0.
 // The shapes below back the `explore.*` and `profile.*` methods.

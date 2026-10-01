@@ -10,6 +10,7 @@
 import type {
   AnalyticsConsent,
   DiscordLink,
+  FoundingInterest,
   AppDetail,
   AppSort,
   AppSummary,
@@ -1058,6 +1059,23 @@ export interface MethodMap {
   'profile.unlinkDiscord': {
     params: Record<string, never>
     result: { linked: false }
+  }
+  /**
+   * When the viewer said they want to be a Founding Creator, or null.
+   * Signed-in; first-party apps only. Backing: users D1.
+   */
+  'profile.getFoundingInterest': {
+    params: Record<string, never>
+    result: FoundingInterest
+  }
+  /**
+   * Record that the viewer wants to be a Founding Creator. One-way; a repeat
+   * keeps the first timestamp. Refused for a suspended account.
+   * Signed-in; first-party apps only.
+   */
+  'profile.markFoundingInterest': {
+    params: Record<string, never>
+    result: { interestedAt: string }
   }
 
   // ── publish.* ───────────────────────────────────────────────────────────
