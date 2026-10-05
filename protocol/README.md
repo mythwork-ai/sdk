@@ -131,7 +131,7 @@ without authentication. "Auth-gated" means the host requires a signed-in session
 | `project.getNames` | `{ pids: string[] }` | `{ names: Record<string, string \| null> }` | Batch version of `project.getName` |
 | `project.getDescription` | `{ pid: string }` | `{ description: string \| null }` | Cached top-level package.json `description`; `null` when unset or config not yet on disk |
 | `project.setDescription` | `{ pid: string; description: string }` | `Ok` | Sets the top-level package.json `description` (empty string clears it); indexed for search on next publish |
-| `project.setPublicCollab` | `{ pid: string; enabled: boolean }` | `{ projectId: string; publicCollab: boolean }` | Auth-gated; local-only/anonymous project rejects |
+| `project.setPublicCollab` | `{ pid: string; enabled: boolean; mayWrite?: boolean }` | `{ projectId: string; publicCollab: boolean; mayWrite: boolean }` | Auth-gated, owner-only; local-only/anonymous project rejects. `mayWrite: true` lets public guests edit the collab room; `enabled: false` clears it |
 | `project.remix` | `{ projectId: string }` | `ProjectInfo` | **Signed-in;** fork via CAS ref-copy of the source app's PUBLISHED tree (never its live editing head) into a fresh, parentless-commit project; result is the caller's new local handle (`{ pid, role }`). Backing: blob/CAS + projects D1 |
 
 ### build.*

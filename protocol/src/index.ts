@@ -2,7 +2,8 @@
 // protocol between the Mythwork host frame and inner hosted apps.
 //
 // Runtime code from THIS entry point is constants plus the pure outbound-host
-// classifier; everything else is types. Zero dependencies, fully self-contained.
+// classifier and backend-zone map; everything else is types. Zero
+// dependencies, fully self-contained.
 //
 // The collab join-token reconnect contract is deliberately NOT re-exported here.
 // It owns timers and mutates a live provider, and this package is published to
@@ -17,5 +18,6 @@ export * from './methods'
 export * from './app-metadata'
 export * from './events'
 export * from './descriptors'
+export * from './backend-zone'
 export * from './outbound-hosts'
 export * from './terms'

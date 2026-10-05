@@ -201,7 +201,7 @@ export class MythworkClient {
     /** Set a project's description (backs the top-level package.json `description`). Wire: `project.setDescription`. */
     setDescription: (params: MethodParams<'project.setDescription'>, opts?: RequestOptions) =>
       this.request('project.setDescription', params, opts),
-    /** Toggle public collaboration on a project. Wire: `project.setPublicCollab`. */
+    /** Toggle public collaboration on a project; `mayWrite: true` lets guests edit. Wire: `project.setPublicCollab`. */
     setPublicCollab: (params: MethodParams<'project.setPublicCollab'>, opts?: RequestOptions) =>
       this.request('project.setPublicCollab', params, opts),
     /**

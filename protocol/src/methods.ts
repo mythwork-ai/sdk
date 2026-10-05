@@ -204,6 +204,14 @@ export type AgentEvent =
    */
   | { kind: 'preview'; url: string; jobId: string }
   /**
+   * The session opened a project that already has an app: mythcode job `jobId`
+   * of project `projectId`. Mythcode engine only. Fires at most once per
+   * session, ahead of that app's first `preview`. A session whose project has no
+   * app yet never gets one, and an eviction does not repeat it: the reopened
+   * job arrives as a `preview` under its new `jobId`.
+   */
+  | { kind: 'project-reopened'; projectId: string; jobId: string }
+  /**
    * Where the build's push of its source tree to the project's commit plane got
    * to. Mythcode engine only. `commitHead` is the CAS commit the project head
    * now points at, and it lands AFTER `preview`, so a Publish affordance gates
@@ -281,9 +289,11 @@ export type AgentEvent =
         /** Another edit holds the app. Nothing spent; resend when it finishes. */
         | 'busy'
         /**
-         * mythcode declined. The reason is in `detail`; `message` is the same
-         * text under the prefix `edit refused: `. The only mythcode error text
-         * ever shown to a maker: printable, collapsed, cut at 240 chars.
+         * mythcode declined, and resending gets the same answer. For an edit the
+         * reason is in `detail`; `message` is the same text under the prefix
+         * `edit refused: `, printable, collapsed, cut at 240 chars. For a reopen
+         * the mythcode origin refused this account (HTTP 401 or 403), and
+         * `message` and `detail` both say so.
          */
         | 'refused'
         /**
@@ -299,6 +309,13 @@ export type AgentEvent =
          * looks the record up again, so resending is the recovery.
          */
         | 'app_unreachable'
+        /**
+         * The project had an app, but the mythcode origin no longer holds its
+         * last build. Not fatal: the session is reset, so the next message
+         * builds the app again. `message` opens with the origin's own sentence
+         * when it sent one.
+         */
+        | 'app_not_found'
         /** A signed-in user's rolling 5h/7d or calendar-month spend cap tripped. */
         | 'usage_limit'
       /** Sanitized supporting text; today only `refused` carries one. */
@@ -635,11 +652,13 @@ export interface MethodMap {
   /**
    * Toggle public collaboration on a project. Requires a signed-in session
    * (the host first ensures a canonical projectId, then calls the owner-only
-   * setter); a local-only/anonymous project rejects.
+   * setter); a local-only/anonymous project rejects. `mayWrite: true` lets
+   * guests admitted through public collaboration edit the project's collab
+   * room; it defaults to false and `enabled: false` clears it.
    */
   'project.setPublicCollab': {
-    params: { pid: string; enabled: boolean }
-    result: { projectId: string; publicCollab: boolean }
+    params: { pid: string; enabled: boolean; mayWrite?: boolean }
+    result: { projectId: string; publicCollab: boolean; mayWrite: boolean }
   }
   /**
    * Fork the app at the source canonical `projectId`: a CAS ref-copy of that
