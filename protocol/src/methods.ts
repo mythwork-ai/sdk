@@ -11,6 +11,7 @@ import type {
   AnalyticsConsent,
   DiscordLink,
   FoundingInterest,
+  Referral,
   AppDetail,
   AppSort,
   AppSummary,
@@ -327,6 +328,8 @@ export type AgentEvent =
         | 'app_not_found'
         /** A signed-in user's rolling 5h/7d or calendar-month spend cap tripped. */
         | 'usage_limit'
+        /** Mythcode engine only: the edit finished and changed nothing; the app is as it was. */
+        | 'no_changes'
       /** Sanitized supporting text; today only `refused` carries one. */
       detail?: string
       /**
@@ -1168,6 +1171,25 @@ export interface MethodMap {
   'profile.markFoundingInterest': {
     params: Record<string, never>
     result: { interestedAt: string }
+  }
+  /**
+   * The viewer's personal referral code and link (`https://<zone>/?ref=<code>`).
+   * The code is minted on the first call and never changes after that.
+   * Signed-in; first-party apps only. Backing: users D1.
+   */
+  'profile.getReferral': {
+    params: Record<string, never>
+    result: Referral
+  }
+  /**
+   * Record that someone's referral code brought the viewer here. Only a new
+   * account (signed up in the last 15 minutes) that has not claimed before can
+   * claim. An unknown code, the viewer's own code, a repeat or an older account
+   * all answer `{ claimed: false }`. Signed-in; first-party apps only.
+   */
+  'profile.claimReferral': {
+    params: { code: string }
+    result: { claimed: boolean }
   }
 
   // ── publish.* ───────────────────────────────────────────────────────────

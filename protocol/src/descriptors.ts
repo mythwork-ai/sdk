@@ -320,6 +320,14 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     http: { verb: 'POST', path: '/profile/me/founding-interest' },
     auth: { signedOut: 'throw', onError: 'throw' },
   },
+  'profile.getReferral': {
+    http: { verb: 'GET', path: '/profile/me/referral' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'profile.claimReferral': {
+    http: { verb: 'POST', path: '/profile/me/referral/claim' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
 
   // ── notifications.* ──────────────────────────────────────────────────────
   'notifications.list': {

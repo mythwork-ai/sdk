@@ -204,6 +204,12 @@ export interface FoundingInterest {
   interestedAt: string | null
 }
 
+/** The viewer's personal referral code and the link that carries it. */
+export interface Referral {
+  code: string
+  url: string
+}
+
 // ── explore surface ─────────────────────────────────────────────────────────
 // @experimental — API may still evolve before 1.0.
 // The shapes below back the `explore.*` and `profile.*` methods.

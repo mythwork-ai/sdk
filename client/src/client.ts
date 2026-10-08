@@ -798,6 +798,18 @@ export class MythworkClient {
     markFoundingInterest: (opts?: RequestOptions) =>
       this.request('profile.markFoundingInterest', {}, opts),
     /**
+     * The viewer's personal referral code and link, minted on first call.
+     * Signed-in; first-party apps only. Wire: `profile.getReferral`.
+     */
+    getReferral: (opts?: RequestOptions) => this.request('profile.getReferral', {}, opts),
+    /**
+     * Record who referred the viewer, from the `ref` code in the link they
+     * arrived on. Only a new account can claim, once; anything else is
+     * `{ claimed: false }`. Wire: `profile.claimReferral`.
+     */
+    claimReferral: (code: string, opts?: RequestOptions) =>
+      this.request('profile.claimReferral', { code }, opts),
+    /**
      * @experimental — API may still evolve before 1.0. Submit the full authed
      * claim (lead fields + the real platform handle + opaque `survey` blob).
      * Signed-out resolves `{ ok: false, reason: 'sign_in_required' }` with zero

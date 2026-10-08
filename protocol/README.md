@@ -419,6 +419,8 @@ Signed-in-scoped app collections, replacing the frontend's localStorage-only `st
 | `profile.unlinkDiscord` | `{}` | `{ linked: false }` | **Signed-in; first-party apps only.** |
 | `profile.getFoundingInterest` | `{}` | `FoundingInterest` | **Signed-in; first-party apps only.** `{ interestedAt: string \| null }` (ISO). Backing: users D1 |
 | `profile.markFoundingInterest` | `{}` | `{ interestedAt: string }` | **Signed-in; first-party apps only.** One-way; a repeat keeps the first timestamp. Refused for a suspended account. Backing: users D1 |
+| `profile.getReferral` | `{}` | `Referral` | **Signed-in; first-party apps only.** `{ code, url }`: 8 uppercase Crockford base32 characters, minted on the first call and fixed after that; `url` is `https://<zone>/?ref=<code>`. Backing: users D1 |
+| `profile.claimReferral` | `{ code: string }` | `{ claimed: boolean }` | **Signed-in; first-party apps only.** Records who referred the viewer. Only an account created in the last 15 minutes that has not claimed before can claim; an unknown code, the viewer's own code, a suspended referrer, a repeat or an older account all answer `{ claimed: false }`. A malformed code is a 400. Rate limited. Backing: users D1 |
 | `profile.submitClaim` | `{ name: string; email: string; handle: string; acceptedTerms: true; survey?: Record<string, unknown> }` | `Ok \| { ok: false; reason: string }` | **Signed-in (gated-result).** One authed call: lead fields + the real platform handle (different handle = atomic rename; handle claim runs before the lead upsert, retry-safe); `survey` is an opaque app blob. Backing: claims + profiles D1 |
 
 > No new events. Live counters (`explore.statsChanged`, `explore.commentAdded`)
