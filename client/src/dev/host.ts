@@ -43,6 +43,7 @@
 //   - Unknown method: { id, error: 'Unknown method: <m>' } (never hangs).
 
 import {
+  BUILD_SUGGEST_DRAFT_ID_MAX_CHARS,
   classifyOutboundHost,
   isAppThemeStyle,
   isLocalOutbound,
@@ -1184,6 +1185,24 @@ const handlers: Record<string, Handler> = {
   'build.projectJobs'(args) {
     if (!Array.isArray(args['pids'])) throw new Error('build.projectJobs: pids invalid')
     return { jobs: {} }
+  },
+
+  // No build server here either, so a suggest that passes validation answers
+  // `unavailable` and pushes nothing, as production does when mythcode is down.
+  'build.suggest'(args, state) {
+    if (typeof args['prompt'] !== 'string' || args['prompt'].trim() === '') {
+      throw new Error('build.suggest: prompt required')
+    }
+    const draftId = args['draftId']
+    if (
+      typeof draftId !== 'string' ||
+      draftId === '' ||
+      draftId.length > BUILD_SUGGEST_DRAFT_ID_MAX_CHARS
+    ) {
+      throw new Error('build.suggest: draftId invalid')
+    }
+    if (state.user.kind === 'anonymous') return { ok: false, reason: 'signed-out' }
+    return { ok: false, reason: 'unavailable' }
   },
 
   // ── fs (shared store; writes push fs.changed to other clients) ───────────────

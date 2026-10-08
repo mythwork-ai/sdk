@@ -129,6 +129,7 @@ without authentication. "Auth-gated" means the host requires a signed-in session
 | `project.rename` | `{ pid: string; newName: string }` | `Ok` | Updates on-disk config + name cache |
 | `project.getName` | `{ pid: string }` | `{ name: string \| null }` | Cached display name; `null` if config not yet on disk |
 | `project.getNames` | `{ pids: string[] }` | `{ names: Record<string, string \| null> }` | Batch version of `project.getName` |
+| `project.getEngine` | `{ pid: string }` | `{ engine: 'mythcode' \| null }` | The engine the project's server record names (`projects.engine`); `null` when none is recorded, signed out, or not the caller's project |
 | `project.getDescription` | `{ pid: string }` | `{ description: string \| null }` | Cached top-level package.json `description`; `null` when unset or config not yet on disk |
 | `project.setDescription` | `{ pid: string; description: string }` | `Ok` | Sets the top-level package.json `description` (empty string clears it); indexed for search on next publish |
 | `project.setPublicCollab` | `{ pid: string; enabled: boolean; mayWrite?: boolean }` | `{ projectId: string; publicCollab: boolean; mayWrite: boolean }` | Auth-gated, owner-only; local-only/anonymous project rejects. `mayWrite: true` lets public guests edit the collab room; `enabled: false` clears it |
@@ -153,11 +154,19 @@ ever the caller's to choose. A route may HOLD the request until it has something
 to say, which is how mythcode notifies the caller of something without a second
 push channel; `timeoutMs` bounds that wait (default 30 s, maximum 5 min).
 
+`build.suggest` runs mythcode's Stage 0 on an idea that is still being typed,
+before any project or session exists, and pushes each section as a
+`build.draftSuggestions` event (`{ kind: 'draft-suggestions', draftId, ...patch }`,
+the `build-suggestions` patch shape). One runs per app at a time. The host keeps
+the last finished one per draft, and `agent.create({ engine: 'mythcode', draftId })`
+reuses it for the first build when the prompt still matches.
+
 | Method | Params | Result | Notes |
 |---|---|---|---|
 | `build.applyTheme` | `{ sessionId: string; theme: AppTheme }` | `BuildApplyResult` | Restyles the running app. First-party, signed-in, and a session this app created; a 400 throws `build.applyTheme failed: invalid` |
 | `build.setTitle` | `{ sessionId: string; name: string }` | `BuildApplyResult` | Sets the running app's title; `name` trimmed, non-empty, max 200 chars |
 | `build.request` | `{ sessionId: string; type: string; method?: BuildRequestMethod; query?: Record<string, string>; body?: unknown; timeoutMs?: number }` | `BuildRequestResult` | Same gates as the two above. `{ ok: true, status, body }` for any success; `{ ok: false, reason, busyForMs? }` otherwise (`busyForMs` as on `BuildApplyResult`; `pending`, `busy`, `not_ready`, `evicted`, `unavailable`, `refused` for another 4xx, `unsupported` for an answer past the 1 MiB cap or in a content type it cannot carry, `timeout` when the wait elapses). An unusable `type`, `method`, `query` or `timeoutMs` throws |
+| `build.suggest` | `{ prompt: string; draftId: string }` | `BuildSuggestResult` | First-party, signed-in; no session. Resolves when the stream ends: `{ ok: true }`, or `{ ok: false, reason }` with `signed-out`, `rate-limited`, `superseded` (a newer suggest took its place) or `unavailable`. An empty `prompt`, or an empty or over-128-char `draftId`, throws |
 
 ### fs.* — file operations
 

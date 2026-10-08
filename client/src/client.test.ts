@@ -150,6 +150,12 @@ describe('namespaced helper → wire method mapping', () => {
         timeoutMs: 60_000,
       },
     ],
+    [
+      'build.suggest',
+      () => client.build.suggest({ prompt: 'a clinic visit log', draftId: 'd1' }),
+      'build.suggest',
+      { prompt: 'a clinic visit log', draftId: 'd1' },
+    ],
     ['profile.me', () => client.profile.me(), 'profile.me', {}],
     [
       'profile.myFavorites',
@@ -800,6 +806,54 @@ describe('event helpers route to the right push prefix', () => {
     await until(() => hits.length > 0, 'the nav.navigate push')
     expect(hits).toHaveLength(1)
     expect(hits[0]?.path).toBe('/showcase')
+  })
+
+  it('build.onDraftSuggestions receives build.draftSuggestions pushes', async () => {
+    const hits: unknown[] = []
+    client.build.onDraftSuggestions(p => hits.push(p))
+    chan.port2.postMessage({
+      type: 'build.draftSuggestions',
+      kind: 'draft-suggestions',
+      draftId: 'd1',
+      names: ['Clinic Ledger'],
+    })
+    await until(() => hits.length > 0, 'the build.draftSuggestions push')
+    expect(hits).toEqual([
+      expect.objectContaining({
+        kind: 'draft-suggestions',
+        draftId: 'd1',
+        names: ['Clinic Ledger'],
+      }),
+    ])
+  })
+})
+
+describe('build.suggest transport budget', () => {
+  let chan: MessageChannel
+  let client: MythworkClient
+
+  beforeEach(() => {
+    chan = new MessageChannel()
+    chan.port2.start()
+    client = new MythworkClient(chan.port1)
+  })
+  afterEach(() => {
+    chan.port1.close()
+    chan.port2.close()
+    vi.useRealTimers()
+  })
+
+  // The host answers only once the model stream ends, so the generic 30s must
+  // not cancel a suggest that is still streaming.
+  it('waits the interactive budget, not the generic 30s default', async () => {
+    vi.useFakeTimers()
+    const p = client.build.suggest({ prompt: 'a clinic visit log', draftId: 'd1' })
+    const settled = vi.fn()
+    p.catch(settled)
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS)
+    expect(settled).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERACTIVE_TIMEOUT_MS - DEFAULT_REQUEST_TIMEOUT_MS)
+    await expect(p).rejects.toThrow(/timed out after 120000ms/)
   })
 })
 

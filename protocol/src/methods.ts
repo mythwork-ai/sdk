@@ -30,6 +30,7 @@ import type {
   Ok,
   OpenAITool,
   ProjectConfig,
+  ProjectEngine,
   ProjectInfo,
   PublishedApp,
   RoomDescriptor,
@@ -157,6 +158,13 @@ export type GatedResult = { ok: false; reason: AgentGatedReason }
  *   app whose id is `projectId`. Once the session has attached, a `preview` event
  *   arrives on its own, before any turn.
  * - `projectId`/`jobId` are refused on the standard engine.
+ * - `draftId` optional: the `draftId` this app's idea was typed under and sent
+ *   to {@link MethodMap['build.suggest']}. When the session's first build turn
+ *   carries the same prompt that draft's last finished suggest did (after
+ *   trimming and collapsing whitespace), the host hands that suggest's Stage 0
+ *   to the build instead of running it again. Any other prompt, or a draft the
+ *   host no longer holds, builds exactly as without it. Ignored on the standard
+ *   engine and on edit turns.
  */
 export interface AgentSessionOptions {
   persona?: string
@@ -168,6 +176,7 @@ export interface AgentSessionOptions {
   engine?: 'standard' | 'mythcode'
   projectId?: string
   jobId?: string
+  draftId?: string
 }
 
 /**
@@ -499,6 +508,39 @@ export type BuildApplyResult =
   | { applied: true }
   | { applied: false; reason: BuildApplyReason; busyForMs?: number }
 
+/**
+ * The Stage 0 sections of a `build-suggestions` event: one merge-able patch,
+ * every field optional.
+ */
+export type BuildSuggestionsPatch = Omit<Extract<AgentEvent, { kind: 'build-suggestions' }>, 'kind'>
+
+/**
+ * Stage 0 suggestions for an idea the maker is still typing, from
+ * {@link MethodMap['build.suggest']}: the `build-suggestions` patch shape,
+ * tagged with the caller's `draftId` instead of a session. Partial and
+ * repeated, like `build-suggestions`: merge what arrives.
+ */
+export type DraftSuggestions = {
+  kind: 'draft-suggestions'
+  draftId: string
+} & BuildSuggestionsPatch
+
+/**
+ * Why a {@link MethodMap['build.suggest']} ended without its suggestions.
+ *
+ * - `signed-out`   — no signed-in user, or the build server refused the identity.
+ * - `rate-limited` — too many suggests in the last minute; patches stop until it clears.
+ * - `superseded`   — a newer `build.suggest` from this app took its place.
+ * - `unavailable`  — the build server did not answer, or failed mid-stream.
+ */
+export type BuildSuggestReason = 'signed-out' | 'unavailable' | 'rate-limited' | 'superseded'
+
+/** What a {@link MethodMap['build.suggest']} settled to. */
+export type BuildSuggestResult = { ok: true } | { ok: false; reason: BuildSuggestReason }
+
+/** Longest `draftId` a {@link MethodMap['build.suggest']} may carry, in characters. */
+export const BUILD_SUGGEST_DRAFT_ID_MAX_CHARS = 128
+
 /** Most pids one {@link MethodMap['build.projectJobs']} may name. */
 export const BUILD_PROJECT_JOBS_MAX_PIDS = 100
 
@@ -636,6 +678,12 @@ export interface MethodMap {
     result: { names: Record<string, string | null> }
   }
   /**
+   * The engine the platform's project record says made this project, read
+   * fresh from the server. `null` when the row records none, the caller is
+   * signed out, or the account cannot see the project.
+   */
+  'project.getEngine': { params: { pid: string }; result: { engine: ProjectEngine | null } }
+  /**
    * Read a project's top-level package.json `description` (cached). `null` when
    * the app has no description or the config isn't on disk yet. Mirrors
    * {@link MethodMap['project.getName']}.
@@ -758,6 +806,28 @@ export interface MethodMap {
     params: { pids: string[] }
     result: { jobs: Record<string, BuildProjectJob> }
   }
+  /**
+   * Run mythcode's Stage 0 on an idea the maker has not submitted yet, and push
+   * what it suggests as `build.draftSuggestions` events tagged with `draftId`,
+   * as each section decodes. Resolves when the stream ends. Needs no session
+   * and no project. Requires a first-party, signed-in caller; signed out
+   * resolves `{ ok: false, reason: 'signed-out' }` with zero network.
+   *
+   * One suggest runs per app at a time: a newer call, for any `draftId`, ends
+   * the older one, which resolves `superseded`.
+   *
+   * The host keeps the last finished suggest of each recent draft (the last
+   * five, in memory). An `agent.create` naming that `draftId` reuses it for
+   * the first build when the prompts match; see {@link AgentSessionOptions}.
+   *
+   * `prompt` is trimmed and must be non-empty; `draftId` is non-empty and at
+   * most {@link BUILD_SUGGEST_DRAFT_ID_MAX_CHARS} characters. Either one
+   * unusable throws.
+   */
+  'build.suggest': {
+    params: { prompt: string; draftId: string }
+    result: BuildSuggestResult
+  }
 
   // ── fs.* file ops ───────────────────────────────────────────────────────
 
@@ -781,9 +851,12 @@ export interface MethodMap {
   /**
    * Commit the working tree. `author` overrides the default commit author.
    * Associates the project canonically (signed-in) before committing.
+   * `upload: 'await'` (default) resolves once the server has HEAD;
+   * `'background'` resolves after the local commit and uploads on the host's
+   * queue, so a stale-parent conflict no longer rejects this call.
    */
   'fs.commit': {
-    params: { pid: string; message: string; author?: CommitAuthor }
+    params: { pid: string; message: string; author?: CommitAuthor; upload?: 'await' | 'background' }
     result: { sha: string }
   }
   /** Read commit history, newest first, optionally paginated by `depth`/`skip`. */

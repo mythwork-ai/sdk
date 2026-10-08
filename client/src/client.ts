@@ -195,6 +195,9 @@ export class MythworkClient {
     /** Batch-read project display names. Wire: `project.getNames`. */
     getNames: (params: MethodParams<'project.getNames'>, opts?: RequestOptions) =>
       this.request('project.getNames', params, opts),
+    /** The engine the project's server record names, or null. Wire: `project.getEngine`. */
+    getEngine: (params: MethodParams<'project.getEngine'>, opts?: RequestOptions) =>
+      this.request('project.getEngine', params, opts),
     /** Read a project's description. Wire: `project.getDescription`. */
     getDescription: (params: MethodParams<'project.getDescription'>, opts?: RequestOptions) =>
       this.request('project.getDescription', params, opts),
@@ -295,6 +298,25 @@ export class MythworkClient {
      */
     projectJobs: (params: MethodParams<'build.projectJobs'>, opts?: RequestOptions) =>
       this.request('build.projectJobs', params, opts),
+    /**
+     * Run Stage 0 on an idea the maker is still typing; the sections arrive as
+     * `build.draftSuggestions` events tagged with `draftId` (see
+     * `onDraftSuggestions`). Resolves `{ ok: true }` when the stream ends, or
+     * `{ ok: false, reason }`; a newer call ends this one as `superseded`.
+     * Pass the same `draftId` to `agent.create` so the build can reuse the
+     * result. Wire: `build.suggest`.
+     *
+     * Budgeted with {@link DEFAULT_INTERACTIVE_TIMEOUT_MS}: the host replies only
+     * once the model stream ends.
+     */
+    suggest: (params: MethodParams<'build.suggest'>, opts?: RequestOptions) =>
+      this.request('build.suggest', params, {
+        ...opts,
+        timeoutMs: opts?.timeoutMs ?? DEFAULT_INTERACTIVE_TIMEOUT_MS,
+      }),
+    /** Subscribe to Stage 0 sections for drafts. Wire event: `build.draftSuggestions`. */
+    onDraftSuggestions: (handler: EventHandler<'build.draftSuggestions'>) =>
+      this.subscribe('build.draftSuggestions', handler),
   }
 
   // ── fs.* file ops ─────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@
 
 import type { User } from './data'
 import type { PublishedApp } from './data'
-import type { AgentEvent, PossessionOutcome, PublishScan } from './methods'
+import type { AgentEvent, DraftSuggestions, PossessionOutcome, PublishScan } from './methods'
 
 /**
  * The complete push-event map. Keys are the literal `type` strings; each value
@@ -111,6 +111,12 @@ export interface EventMap {
     id: string | null
     event: Record<string, unknown>
   }
+
+  /**
+   * One Stage 0 section for a draft a `build.suggest` is running, as it
+   * decodes. Correlated by `draftId`, not by session: there is no session yet.
+   */
+  'build.draftSuggestions': DraftSuggestions
 
   /**
    * The host wants the app to move to a different in-app path — issued when
