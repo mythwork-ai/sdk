@@ -124,19 +124,17 @@ export interface RoomDescriptor {
  */
 export type ProjectRole = 'leader' | 'follower'
 
-/**
- * Which engine a project's row records as having made it (`projects.engine`).
- * `'standard'` is never recorded, so a project with no record reads `null`.
- */
 export type ProjectEngine = 'mythcode'
 
 /**
- * The identity returned by project open/create: the local handle id (`pid`) and
- * the session {@link ProjectRole}.
+ * The identity returned by project open/create: the local handle id (`pid`),
+ * the session {@link ProjectRole}, and the {@link ProjectEngine} the server
+ * recorded for the project (null when none).
  */
 export interface ProjectInfo {
   pid: string
   role: ProjectRole
+  engine: ProjectEngine | null
 }
 
 /**

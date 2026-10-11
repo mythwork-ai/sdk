@@ -4,7 +4,7 @@
 // client from `useMythwork()`. Browsing apps (explore) never mount this.
 
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react'
-import type { ProjectInfo, ProjectRole } from '@mythwork/protocol'
+import type { MethodParams, ProjectEngine, ProjectInfo, ProjectRole } from '@mythwork/protocol'
 import { useMythwork } from './platform'
 
 export interface MythworkProjectValue {
@@ -12,6 +12,7 @@ export interface MythworkProjectValue {
   pid: string | null
   /** This session's role for the project. */
   role: ProjectRole | null
+  engine: ProjectEngine | null
   status: 'loading' | 'ready' | 'error'
   error: Error | null
 }
@@ -19,6 +20,7 @@ export interface MythworkProjectValue {
 const ProjectCtx = createContext<MythworkProjectValue>({
   pid: null,
   role: null,
+  engine: null,
   status: 'loading',
   error: null,
 })
@@ -28,7 +30,7 @@ export interface MythworkProjectProviderProps {
   /** Open an existing project by local handle id. */
   pid?: string
   /** Or create a new project with these params (used when `pid` is absent). */
-  create?: { projectName?: string }
+  create?: MethodParams<'project.create'>
 }
 
 /**
@@ -46,6 +48,7 @@ export function MythworkProjectProvider({
   const [state, setState] = useState<MythworkProjectValue>({
     pid: null,
     role: null,
+    engine: null,
     status: 'loading',
     error: null,
   })
@@ -59,21 +62,28 @@ export function MythworkProjectProvider({
       : sdk.project.create(create ?? {})
     opened
       .then(info => {
-        if (!cancelled) setState({ pid: info.pid, role: info.role, status: 'ready', error: null })
+        if (!cancelled)
+          setState({
+            pid: info.pid,
+            role: info.role,
+            engine: info.engine,
+            status: 'ready',
+            error: null,
+          })
       })
       .catch((e: Error) => {
-        if (!cancelled) setState({ pid: null, role: null, status: 'error', error: e })
+        if (!cancelled) setState({ pid: null, role: null, engine: null, status: 'error', error: e })
       })
     return () => {
       cancelled = true
       if (pid) void sdk.project.close({ pid }).catch(() => {})
     }
-  }, [sdk, pid, create?.projectName])
+  }, [sdk, pid, create?.projectName, create?.engine, create?.workflow])
 
   return <ProjectCtx.Provider value={state}>{children}</ProjectCtx.Provider>
 }
 
-/** Read the current project's `{ pid, role, status }` from context. */
+/** Read the current project's `{ pid, role, engine, status }` from context. */
 export function useProject(): MythworkProjectValue {
   return useContext(ProjectCtx)
 }

@@ -75,6 +75,7 @@ import type {
   MyAppSummary,
   NotificationInboxItem,
   NotificationPrefs,
+  ProjectEngine,
   ProjectInfo,
   ProjectRole,
   RoomDescriptor,
@@ -292,6 +293,7 @@ interface DevProject {
   leader: MessagePort | null
   /** Host ports that have opened this project — fs.changed push targets. */
   subscribers: Set<MessagePort>
+  engine: ProjectEngine | null
 }
 
 const projects = new Map<string, DevProject>()
@@ -315,6 +317,7 @@ function ensureProject(pid: string): DevProject {
       snapshots: new Map(),
       leader: null,
       subscribers: new Set(),
+      engine: null,
     }
     projects.set(pid, p)
   }
@@ -1055,15 +1058,15 @@ const handlers: Record<string, Handler> = {
 
   // ── project (shared store) ───────────────────────────────────────────────────
 
-  'project.create'(args, _state, ctx) {
-    // Dev-mock pid: sequential prefix for stable test output. Production hosts
-    // draw a canonical p-prefixed 33-char Crockford id from a server-side pool.
+  'project.create'(args, state, ctx) {
+    if (state.user.kind === 'anonymous') throw new Error('project.create: sign in first')
     const pid = `dev${String(pidSeq++).padStart(14, '0')}`
     const project = ensureProject(pid)
     project.name = (args['projectName'] as string | undefined) ?? pid
+    project.engine = (args['engine'] as ProjectEngine | undefined) ?? null
     project.leader = ctx.hostPort
     project.subscribers.add(ctx.hostPort)
-    return { pid, role: 'leader' } satisfies ProjectInfo
+    return { pid, role: 'leader', engine: project.engine } satisfies ProjectInfo
   },
 
   'project.open'(args, _state, ctx) {
@@ -1073,7 +1076,7 @@ const handlers: Record<string, Handler> = {
     const role: ProjectRole =
       project.leader === null || project.leader === ctx.hostPort ? 'leader' : 'follower'
     if (project.leader === null) project.leader = ctx.hostPort
-    return { pid, role } satisfies ProjectInfo
+    return { pid, role, engine: project.engine } satisfies ProjectInfo
   },
 
   'project.remix'(args, state, ctx) {
@@ -1096,7 +1099,7 @@ const handlers: Record<string, Handler> = {
     fork.snapshots = new Map(source.snapshots)
     fork.leader = ctx.hostPort
     fork.subscribers.add(ctx.hostPort)
-    return { pid, role: 'leader' } satisfies ProjectInfo
+    return { pid, role: 'leader', engine: null } satisfies ProjectInfo
   },
 
   'project.close'(args, _state, ctx) {

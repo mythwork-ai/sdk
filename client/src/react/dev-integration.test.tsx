@@ -37,6 +37,7 @@ describe('@mythwork/sdk dev stack — two peers on connect({ dev: true })', () =
   it('live Y.Text converges and commits are shared across peers', async () => {
     const clientA = await connect({ dev: true })
     const clientB = await connect({ dev: true })
+    await clientA.auth.signIn()
     // A creates the match; B joins the same pid (URL-shared in the real app).
     const { pid } = await clientA.project.create({ projectName: 'match' })
 
@@ -110,6 +111,7 @@ describe('@mythwork/sdk dev stack — two peers on connect({ dev: true })', () =
   it('awareness presence converges across peers (relay bridges awareness)', async () => {
     const clientA = await connect({ dev: true })
     const clientB = await connect({ dev: true })
+    await clientA.auth.signIn()
     const { pid } = await clientA.project.create({ projectName: 'match' })
 
     let roomA: CollabRoomHandle | undefined

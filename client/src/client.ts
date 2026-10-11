@@ -155,7 +155,7 @@ export class MythworkClient {
   // ── project.* (+ publish.run) ─────────────────────────────────────────────
   /** Project lifecycle and metadata. Maps to `project.*` and `publish.run`. */
   readonly project = {
-    /** Create a new local-first project. Wire: `project.create`. */
+    /** Create a new project server-side and open it. Signed-in only. Wire: `project.create`. */
     create: (params: MethodParams<'project.create'>, opts?: RequestOptions) =>
       this.request('project.create', params, opts),
     /**

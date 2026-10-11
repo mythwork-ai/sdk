@@ -633,16 +633,21 @@ export interface MethodMap {
   // ── project.* ───────────────────────────────────────────────────────────
 
   /**
-   * Create a new project; the host draws a pooled canonical id server-side (zero
-   * network). `projectName` seeds the display name; `parentProjectId` encodes a
-   * parent for collab-server indexing. `workflow` is free text stored with the
-   * project on its first claim and sent to mythcode as the workflow its app is
-   * built with; it is trimmed, blank means none, and past
-   * {@link PROJECT_WORKFLOW_MAX_CHARS} the create is refused. `open` takes an
-   * existing canonical id.
+   * Create a new project server-side and open it. Signed-in only: an anonymous
+   * caller gets an error. `projectName` seeds the display name; `parentProjectId`
+   * encodes a parent for collab-server indexing. `engine` records which engine
+   * makes the project. `workflow` is free text stored with the project and sent
+   * to mythcode as the workflow its app is built with; it is trimmed, blank means
+   * none, and past {@link PROJECT_WORKFLOW_MAX_CHARS} the create is refused.
+   * `open` takes an existing canonical id.
    */
   'project.create': {
-    params: { projectName?: string; parentProjectId?: string; workflow?: string }
+    params: {
+      projectName?: string
+      parentProjectId?: string
+      engine?: ProjectEngine
+      workflow?: string
+    }
     result: ProjectInfo
   }
   /**
@@ -718,7 +723,7 @@ export interface MethodMap {
    * tree — not the source's live editing head or its commit history, which
    * may hold unpublished work and would otherwise make retention unbounded.
    * Signed-in. Returns the caller's new local project handle ({@link
-   * ProjectInfo}: `{ pid, role }`).
+   * ProjectInfo}).
    */
   'project.remix': { params: { projectId: string }; result: ProjectInfo }
 
@@ -854,12 +859,11 @@ export interface MethodMap {
   /**
    * Commit the working tree. `author` overrides the default commit author.
    * Associates the project canonically (signed-in) before committing.
-   * `upload: 'await'` (default) resolves once the server has HEAD;
-   * `'background'` resolves after the local commit and uploads on the host's
-   * queue, so a stale-parent conflict no longer rejects this call.
+   * Resolves once the server has HEAD; rejects when the upload fails, with
+   * the local commit kept.
    */
   'fs.commit': {
-    params: { pid: string; message: string; author?: CommitAuthor; upload?: 'await' | 'background' }
+    params: { pid: string; message: string; author?: CommitAuthor }
     result: { sha: string }
   }
   /** Read commit history, newest first, optionally paginated by `depth`/`skip`. */

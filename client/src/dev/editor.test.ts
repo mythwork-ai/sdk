@@ -17,8 +17,9 @@ beforeEach(() => _resetDevHostForTests())
 
 describe('dev host — single-client project/fs/git', () => {
   let sdk: MythworkClient
-  beforeEach(() => {
+  beforeEach(async () => {
     sdk = new MythworkClient(createDevHost())
+    await sdk.auth.signIn()
   })
   afterEach(() => sdk.port.close())
 
@@ -285,8 +286,10 @@ describe('dev host — project.remix', () => {
     expect(dec.decode(await sdk.fs.read({ pid: forkPid, path: '/a.txt' }))).toBe('fork-edited')
   })
 
-  it('throws when signed out — a fork needs an owner, unlike project.create', async () => {
+  it('throws when signed out', async () => {
+    await sdk.auth.signIn()
     const { pid: sourcePid } = await sdk.project.create({})
+    await sdk.auth.signOut()
     await expect(sdk.project.remix({ projectId: sourcePid })).rejects.toThrow('sign in first')
   })
 
@@ -302,6 +305,7 @@ describe('dev host — two clients share one project', () => {
   it('follower sees leader commits + receives cross-client fs.changed', async () => {
     const a = new MythworkClient(createDevHost())
     const b = new MythworkClient(createDevHost())
+    await a.auth.signIn()
     const { pid } = await a.project.create({ projectName: 'match' })
     const { role } = await b.project.open({ pid })
     expect(role).toBe('follower')
@@ -326,6 +330,7 @@ describe('dev host — two clients share one project', () => {
 
   it('a writer does not receive its own fs.changed', async () => {
     const a = new MythworkClient(createDevHost())
+    await a.auth.signIn()
     const { pid } = await a.project.create({})
     const own: string[] = []
     a.fs.onChanged(({ path }) => own.push(path))
@@ -339,9 +344,29 @@ describe('dev host — two clients share one project', () => {
 describe('connect({ dev: true }) — editor surface', () => {
   it('exposes project + collab.openRoom with a shared dev room id', async () => {
     const sdk = await connect({ dev: true })
+    await sdk.auth.signIn()
     const { pid } = await sdk.project.create({ projectName: 'm' })
     const room = await sdk.collab.openRoom({ pid, name: 'index.html' })
     expect(room.roomId).toBe(`dev:${pid}:project:index.html`)
     expect(room.serverUrl).toBe('dev:relay')
+  })
+})
+
+describe('dev host — project.create', () => {
+  it('throws when signed out', async () => {
+    const sdk = new MythworkClient(createDevHost())
+    await expect(sdk.project.create({ projectName: 'x' })).rejects.toThrow(
+      'project.create: sign in first',
+    )
+    sdk.port.close()
+  })
+
+  it('reports the engine it was created with', async () => {
+    const sdk = new MythworkClient(createDevHost())
+    await sdk.auth.signIn()
+    const info = await sdk.project.create({ projectName: 'x', engine: 'mythcode' })
+    expect(info.engine).toBe('mythcode')
+    expect((await sdk.project.open({ pid: info.pid })).engine).toBe('mythcode')
+    sdk.port.close()
   })
 })
