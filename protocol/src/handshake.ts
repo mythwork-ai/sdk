@@ -11,6 +11,8 @@
 //
 // All subsequent RPC and push traffic flows over that single port.
 
+import type { SignInHint } from './terms'
+
 /**
  * Protocol version. Exported for documentation only — there is NO version field
  * on the wire today (`oc-init` carries none), so this is a marker of which
@@ -53,6 +55,11 @@ export const OC_INIT = 'oc-init'
  * it ignores an unknown window message, and a host that receives it without
  * the RPC ever arriving discards the reservation on a timer — so old and new
  * on either side degrade to exactly today's behaviour.
+ *
+ * It also carries the same optional {@link SignInHint} fields as the RPC,
+ * because the popup it opens loads the sign-in page at once, before the RPC
+ * arrives. A host that predates those fields ignores them, and the auth
+ * worker's own checkbox page still catches the sign-up.
  */
 export const OC_SIGNIN_GESTURE = 'oc-signin-gesture'
 
@@ -120,10 +127,11 @@ export interface OcPingMessage {
 
 /**
  * The gesture hint the inner app posts to the host's window on a sign-in
- * click. Body-less by design — see {@link OC_SIGNIN_GESTURE}; the host
- * authenticates it by `MessageEvent.source`, exactly as it does `oc-ping`.
+ * click. No id and no reply — see {@link OC_SIGNIN_GESTURE}; the host
+ * authenticates it by `MessageEvent.source`, exactly as it does `oc-ping`,
+ * and drops any {@link SignInHint} field that is malformed.
  */
-export interface OcSignInGestureMessage {
+export interface OcSignInGestureMessage extends SignInHint {
   type: typeof OC_SIGNIN_GESTURE
 }
 

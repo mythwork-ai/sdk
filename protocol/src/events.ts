@@ -76,6 +76,7 @@ export interface EventMap {
     possession?: PossessionOutcome
     scan?: PublishScan
     app?: PublishedApp
+    unchanged?: boolean
   }
 
   /**

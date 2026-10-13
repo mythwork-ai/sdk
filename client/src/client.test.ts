@@ -40,6 +40,12 @@ describe('namespaced helper → wire method mapping', () => {
   const cases: [string, () => Promise<unknown>, string, Record<string, unknown>][] = [
     ['auth.getUser', () => client.auth.getUser(), 'kernel.getUser', {}],
     ['auth.signIn', () => client.auth.signIn(), 'kernel.signIn', {}],
+    [
+      'auth.signIn with a hint',
+      () => client.auth.signIn({ intent: 'signup', acceptedTerms: '2026-09-16' }),
+      'kernel.signIn',
+      { intent: 'signup', acceptedTerms: '2026-09-16' },
+    ],
     ['auth.signOut', () => client.auth.signOut(), 'kernel.signOut', {}],
     ['auth.platformSignOut', () => client.auth.platformSignOut(), 'kernel.platformSignOut', {}],
     ['git.log', () => client.git.log({ pid: 'p', depth: 5 }), 'fs.log', { pid: 'p', depth: 5 }],
@@ -1174,6 +1180,18 @@ describe('auth.signIn gesture hint', () => {
     const pending = client.auth.signIn()
 
     expect(posted).toEqual([{ message: { type: OC_SIGNIN_GESTURE }, targetOrigin: '*' }])
+    await pending
+  })
+
+  it("carries the sign-in's intent and terms on the gesture too", async () => {
+    const pending = client.auth.signIn({ intent: 'signin', acceptedTerms: '2026-09-16' })
+
+    expect(posted).toEqual([
+      {
+        message: { type: OC_SIGNIN_GESTURE, intent: 'signin', acceptedTerms: '2026-09-16' },
+        targetOrigin: '*',
+      },
+    ])
     await pending
   })
 

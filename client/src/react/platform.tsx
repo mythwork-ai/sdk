@@ -18,7 +18,7 @@ import {
   useState,
 } from 'react'
 import { useInRouterContext } from 'react-router-dom'
-import type { User } from '@mythwork/protocol'
+import { parseSignInHint, type SignInHint, type User } from '@mythwork/protocol'
 import type { MythworkClient } from '../client'
 import { type ConnectOptions, connect as defaultConnect } from '../index'
 import { useHostLocationSync } from './use-host-location-sync'
@@ -53,8 +53,11 @@ export interface MythworkContextValue {
   user: User | null
   /** Derived auth status for easy conditional rendering. */
   authStatus: AuthStatus
-  /** Trigger the platform sign-in flow (opens the host OAuth popup). */
-  signIn(): Promise<void>
+  /**
+   * Trigger the platform sign-in flow (opens the host OAuth popup). `hint`
+   * passes through to `kernel.signIn`; see `SignInHint`.
+   */
+  signIn(hint?: SignInHint): Promise<void>
   /** Stop being identified to this app; the platform session stays signed in. */
   signOut(): Promise<void>
   /** Reset and re-run the connect handshake — recovers from `unavailable` without a page reload. */
@@ -132,9 +135,16 @@ export function MythworkProvider({
 
   // Stable actions so downstream hooks (useUser) don't churn identity on every
   // render — they only change when the client does.
-  const signIn = useCallback(async () => {
-    if (sdk) setUser(await sdk.auth.signIn())
-  }, [sdk])
+  // `parseSignInHint` is defence for untyped JS callers: TypeScript rejects
+  // `<button onClick={signIn}>`, but plain JS would hand the click event in as
+  // `hint`, and an event cannot cross the port. Anything but a real hint
+  // becomes {}.
+  const signIn = useCallback(
+    async (hint?: SignInHint) => {
+      if (sdk) setUser(await sdk.auth.signIn(parseSignInHint(hint)))
+    },
+    [sdk],
+  )
   const signOut = useCallback(async () => {
     if (sdk) setUser(await sdk.auth.signOut())
   }, [sdk])

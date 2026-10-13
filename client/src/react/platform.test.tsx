@@ -147,3 +147,56 @@ describe('MythworkProvider — RouterSync wiring', () => {
     expect(useHostLocationSync).not.toHaveBeenCalled()
   })
 })
+
+describe('MythworkProvider — signIn', () => {
+  function recordingClient(): { client: MythworkClient; signIns: unknown[] } {
+    const signIns: unknown[] = []
+    const chan = new MessageChannel()
+    chan.port2.start()
+    chan.port2.onmessage = (e: MessageEvent) => {
+      const { id, method, args } = e.data as { id: string; method: string; args: unknown }
+      if (method === 'kernel.signIn') signIns.push(args)
+      chan.port2.postMessage({ id, result: { kind: 'anonymous', userId: 'anon' } })
+    }
+    return { client: new MythworkClient(chan.port1), signIns }
+  }
+
+  function SignIn({ hint }: { hint?: unknown }): React.JSX.Element {
+    const { authStatus, signIn } = useMythwork()
+    return (
+      <button
+        type="button"
+        data-testid="go"
+        disabled={authStatus === 'loading'}
+        // Hint-less: an untyped JS caller passing signIn straight to onClick,
+        // so the click event lands in its first param. The cast stands in
+        // for the missing types; TypeScript rejects this call.
+        onClick={hint === undefined ? (signIn as () => void) : () => signIn(hint as never)}>
+        go
+      </button>
+    )
+  }
+
+  async function clickGo(hint?: unknown): Promise<unknown[]> {
+    const { client, signIns } = recordingClient()
+    const { getByTestId } = render(
+      <MythworkProvider connect={() => Promise.resolve(client)}>
+        <SignIn hint={hint} />
+      </MythworkProvider>,
+    )
+    await waitFor(() => expect((getByTestId('go') as HTMLButtonElement).disabled).toBe(false))
+    getByTestId('go').click()
+    await waitFor(() => expect(signIns).toHaveLength(1))
+    return signIns
+  }
+
+  it('passes intent and terms through to kernel.signIn', async () => {
+    expect(await clickGo({ intent: 'signup', acceptedTerms: '2026-09-16' })).toEqual([
+      { intent: 'signup', acceptedTerms: '2026-09-16' },
+    ])
+  })
+
+  it('sends empty params when an untyped caller hands it straight to onClick', async () => {
+    expect(await clickGo()).toEqual([{}])
+  })
+})

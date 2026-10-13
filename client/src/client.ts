@@ -22,6 +22,8 @@ import {
   type MethodMap,
   type MethodParams,
   type MethodResult,
+  type OcSignInGestureMessage,
+  type SignInHint,
 } from '@mythwork/protocol'
 import type { Id, PageResult, SchemaRow } from '@mythwork/protocol/contract/db-client.interface'
 import type { CountResult } from '@mythwork/protocol/contract/count-result.v1'
@@ -81,16 +83,21 @@ export type DbSurface = {
  * travels over the MessagePort, which does not carry a gesture in WebKit — see
  * {@link OC_SIGNIN_GESTURE}.
  *
+ * It carries the same `intent` and `acceptedTerms` as the RPC, because the
+ * host may load the sign-in page from this message alone, before the RPC
+ * arrives.
+ *
  * Fire-and-forget and best-effort: un-embedded callers (the dev host, tests,
  * node) have no host window and simply skip it, and a host that does not know
  * the message ignores it. Nothing downstream depends on it having arrived.
  */
-function reportSignInGesture(): void {
+function reportSignInGesture(hint: SignInHint): void {
   if (typeof window === 'undefined') return
   const parent = window.parent
   if (!parent || parent === window) return
   try {
-    parent.postMessage({ type: OC_SIGNIN_GESTURE }, '*')
+    const message: OcSignInGestureMessage = { ...hint, type: OC_SIGNIN_GESTURE }
+    parent.postMessage(message, '*')
   } catch {
     /* a cross-origin parent that refuses the post is not a sign-in failure */
   }
@@ -522,7 +529,7 @@ export class MythworkClient {
      * (30s) — the exact bug this default was added to fix.
      */
     signIn: (params: MethodParams<'kernel.signIn'> = {}, opts?: RequestOptions) => {
-      reportSignInGesture()
+      reportSignInGesture(params)
       return this.request('kernel.signIn', params, {
         ...opts,
         timeoutMs: opts?.timeoutMs ?? DEFAULT_INTERACTIVE_TIMEOUT_MS,

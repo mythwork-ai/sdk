@@ -66,6 +66,13 @@ reports the click that way before it sends the RPC. It is a hint: no id, no
 reply, and the RPC still does the work. A host that does not know the message
 ignores it and sign-in behaves as it did before.
 
+Both the gesture message and `kernel.signIn` take the optional `SignInHint`
+fields `intent` (`'signup'` or `'signin'`) and `acceptedTerms` (the
+`TERMS_VERSION` whose checkbox the app showed and the user ticked). The host
+forwards them to the auth worker only for the platform's own app, so a maker
+app cannot claim the platform Terms were accepted; for any other app, or on a
+host that predates the fields, a sign-up still gets the worker's checkbox page.
+
 ---
 
 ## Envelope shapes
@@ -256,7 +263,7 @@ the success shape) rather than throwing.
 | Wire method | Params | Result | Notes |
 |---|---|---|---|
 | `kernel.getUser` | `{}` | `User` | Returns anonymous sentinel when signed out |
-| `kernel.signIn` | `{}` | `User` | Opens Google OAuth popup if needed; also fires `kernel.authChanged` push |
+| `kernel.signIn` | `{ intent?, acceptedTerms? }` | `User` | Opens Google OAuth popup if needed; also fires `kernel.authChanged` push |
 | `kernel.signOut` | `{}` | `User` | Resolves optimistically; `kernel.authChanged` push reconfirms |
 | `kernel.platformSignOut` | `{}` | `User` | Ends the platform session; requires the `platformSignOut` grant; resolves only once confirmed, rejects otherwise |
 

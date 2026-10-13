@@ -67,6 +67,13 @@ if (user.kind === 'anonymous') {
   console.log('signed in as', authed.displayName)
 }
 
+// A split Sign up / Sign in dialog can say which button was clicked, and
+// which Terms version its own checkbox showed and the user ticked
+// (TERMS_VERSION from @mythwork/protocol). The host forwards these only for
+// the platform's own app; for any other app a sign-up still gets the
+// platform's checkbox page.
+await sdk.auth.signIn({ intent: 'signup', acceptedTerms: TERMS_VERSION })
+
 // Subscribe to auth changes
 const off = sdk.auth.onAuthChanged(({ user }) => {
   console.log('auth changed', user.kind)
@@ -222,10 +229,14 @@ function Root() {
 
 function Header() {
   const { user, authStatus, signIn } = useMythwork()
-  if (authStatus === 'anonymous') return <button onClick={signIn}>Sign in</button>
+  if (authStatus === 'anonymous') return <button onClick={() => signIn()}>Sign in</button>
   return <span>{user?.kind === 'public' ? user.displayName : 'anon'}</span>
 }
 ```
+
+`signIn(hint?)` takes the same optional `{ intent, acceptedTerms }` as
+`sdk.auth.signIn`. Wrap it in a handler rather than passing it to `onClick`
+directly, so the click event is not taken for a hint.
 
 Un-embedded (a dev server / tests) where `connect()` would hang, inject a
 DevHost-backed client via the `connect` seam:

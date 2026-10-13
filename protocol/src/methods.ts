@@ -53,6 +53,7 @@ import type { CountResult } from './contract/count-result.v1'
 import type { CreateBody } from './contract/create-body.v1'
 import type { PatchBody } from './contract/update-patch.v1'
 import type { SchemaResponse } from './contract/schema-response.v1'
+import type { SignInHint } from './terms'
 
 /**
  * @experimental Shared `opts` for the `ai.*` methods — the OpenAI-compatible
@@ -211,8 +212,10 @@ export type AgentEvent =
    * engine only. Fires on the first serve, on every `preview_updated`, and under
    * a NEW `jobId` after an eviction was reopened — the session id never changes
    * with it. Idempotent: point the frame at `url`, take `jobId` as current.
+   * `streamUrl`, when mythcode returned one, reads the job's events with no
+   * credential of its own.
    */
-  | { kind: 'preview'; url: string; jobId: string }
+  | { kind: 'preview'; url: string; jobId: string; streamUrl?: string }
   /**
    * The session opened a project that already has an app: mythcode job `jobId`
    * of project `projectId`. Mythcode engine only. Fires at most once per
@@ -1214,6 +1217,8 @@ export interface MethodMap {
    * `possession.proven: false` means the publish itself succeeded but source
    * reads (pull / eject) stayed closed for this tree; republishing retries it.
    * `scan` and `app` are set when the publishing server reported them.
+   * `unchanged` means the alias already served this exact app and nothing was
+   * republished.
    */
   'publish.run': {
     params: {
@@ -1233,6 +1238,7 @@ export interface MethodMap {
       possession: PossessionOutcome
       scan?: PublishScan
       app?: PublishedApp
+      unchanged: boolean
     }
   }
 
@@ -1244,8 +1250,12 @@ export interface MethodMap {
    * Sign in (opens the Google OAuth popup if needed). Resolves to the
    * authenticated user, or the current (anonymous) user if the popup is
    * dismissed. Also fires a `kernel.authChanged` push.
+   *
+   * The optional {@link SignInHint} says which button was clicked and which
+   * Terms version the app's own checkbox showed. The host forwards it only
+   * for the platform's own app and drops it for any other.
    */
-  'kernel.signIn': { params: Record<string, never>; result: User }
+  'kernel.signIn': { params: SignInHint; result: User }
   /**
    * Stop being identified to THIS app: the caller is recorded as anonymous for
    * this project. The user's myth.work and Google sessions are untouched — an
