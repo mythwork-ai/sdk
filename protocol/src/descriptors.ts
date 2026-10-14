@@ -320,6 +320,18 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     http: { verb: 'POST', path: '/profile/me/founding-interest' },
     auth: { signedOut: 'throw', onError: 'throw' },
   },
+  'profile.getFeatureInterest': {
+    http: { verb: 'GET', path: '/profile/me/feature-interest' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'profile.markFeatureInterest': {
+    http: { verb: 'POST', path: '/profile/me/feature-interest' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
+  'profile.suggestFeature': {
+    http: { verb: 'POST', path: '/profile/me/feature-suggestions' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
   'profile.getReferral': {
     http: { verb: 'GET', path: '/profile/me/referral' },
     auth: { signedOut: 'throw', onError: 'throw' },

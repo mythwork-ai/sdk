@@ -805,6 +805,27 @@ export class MythworkClient {
     markFoundingInterest: (opts?: RequestOptions) =>
       this.request('profile.markFoundingInterest', {}, opts),
     /**
+     * The features the viewer voted for. Signed-in; first-party apps only.
+     * Wire: `profile.getFeatureInterest`.
+     */
+    getFeatureInterest: (opts?: RequestOptions) =>
+      this.request('profile.getFeatureInterest', {}, opts),
+    /**
+     * Vote for a feature shown at menu slot `position` (1-based); a repeat
+     * keeps the first vote and its position. Wire: `profile.markFeatureInterest`.
+     */
+    markFeatureInterest: (
+      feature: MethodParams<'profile.markFeatureInterest'>['feature'],
+      position: MethodParams<'profile.markFeatureInterest'>['position'],
+      opts?: RequestOptions,
+    ) => this.request('profile.markFeatureInterest', { feature, position }, opts),
+    /**
+     * Suggest a feature in free text (1 to 500 characters after trimming); at
+     * most 10 per rolling 24 hours. Wire: `profile.suggestFeature`.
+     */
+    suggestFeature: (text: string, opts?: RequestOptions) =>
+      this.request('profile.suggestFeature', { text }, opts),
+    /**
      * The viewer's personal referral code and link, minted on first call.
      * Signed-in; first-party apps only. Wire: `profile.getReferral`.
      */

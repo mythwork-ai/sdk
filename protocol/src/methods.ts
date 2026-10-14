@@ -10,6 +10,7 @@
 import type {
   AnalyticsConsent,
   DiscordLink,
+  FeatureInterest,
   FoundingInterest,
   Referral,
   AppDetail,
@@ -105,6 +106,9 @@ export type AiOpts =
  *   - `project_required`      — `engine: 'mythcode'` with no `projectId`.
  *   - `project_not_supported` — `projectId`/`jobId` on the standard engine.
  *   - `job_mismatch`          — `jobId` names no app whose id is `projectId`.
+ *   - `not_stoppable`         — `agent.stop` on a mythcode session with no edit
+ *                               mythcode has accepted: a first build, or a turn
+ *                               before its edit's 202. Nothing is stopped.
  *
  * All decided in the host frame with ZERO network.
  */
@@ -119,6 +123,7 @@ export type AgentGatedReason =
   | 'project_required'
   | 'project_not_supported'
   | 'job_mismatch'
+  | 'not_stoppable'
 
 /**
  * @experimental Gated-result failure envelope returned as a result value rather
@@ -333,6 +338,13 @@ export type AgentEvent =
         | 'usage_limit'
         /** Mythcode engine only: the edit finished and changed nothing; the app is as it was. */
         | 'no_changes'
+        /**
+         * Mythcode engine only, not fatal: a Stop during an edit was not
+         * confirmed, because the cancel request failed or was refused, or the
+         * edit did not end within 120 s of it. The edit is still running and
+         * the turn stays open.
+         */
+        | 'stop_unconfirmed'
       /** Sanitized supporting text; today only `refused` carries one. */
       detail?: string
       /**
@@ -344,7 +356,17 @@ export type AgentEvent =
        */
       usageLimit?: UsageLimitDetail
     }
-  | { kind: 'turn-done'; turnId: string; status: 'ok' | 'stopped' | 'error' }
+  | {
+      kind: 'turn-done'
+      turnId: string
+      status: 'ok' | 'stopped' | 'error'
+      /**
+       * Mythcode engine only, set only with `status: 'stopped'`: `reverted` when
+       * mythcode cancelled the edit and rolled the app back to where the edit
+       * started. Nothing from the edit was saved.
+       */
+      stopped?: 'reverted'
+    }
   | { kind: 'usage'; promptTokens?: number; completionTokens?: number; costUsd?: number }
   | { kind: 'tool-request'; requestId: string; tool: string; args: unknown }
 
@@ -1178,6 +1200,35 @@ export interface MethodMap {
   'profile.markFoundingInterest': {
     params: Record<string, never>
     result: { interestedAt: string }
+  }
+  /**
+   * The features the viewer voted for. Signed-in; first-party apps only.
+   * Backing: feature_interest D1.
+   */
+  'profile.getFeatureInterest': {
+    params: Record<string, never>
+    result: FeatureInterest
+  }
+  /**
+   * Vote for a feature shown at menu slot `position` (1-based). One vote per
+   * feature; a repeat keeps the first vote and its position. Refused for a
+   * suspended account. Signed-in; first-party apps only.
+   */
+  'profile.markFeatureInterest': {
+    params: {
+      feature: FeatureInterest['features'][number]['feature']
+      position: FeatureInterest['features'][number]['position']
+    }
+    result: FeatureInterest
+  }
+  /**
+   * Suggest a feature in free text (trimmed, 1 to 500 characters). At most 10
+   * per user per rolling 24 hours. Refused for a suspended account.
+   * Signed-in; first-party apps only. Backing: feature_suggestions D1.
+   */
+  'profile.suggestFeature': {
+    params: { text: string }
+    result: { id: string; createdAt: string }
   }
   /**
    * The viewer's personal referral code and link (`https://<zone>/?ref=<code>`).
@@ -2148,7 +2199,11 @@ export interface MethodMap {
    * @experimental — API may still evolve before 1.0.
    *
    * Abort the current turn; the session survives and emits `turn-done(stopped)`.
-   * Gated-result: signed-out → `'sign_in_required'`. Wire: `agent.stop`.
+   * On the mythcode engine only an edit mythcode accepted can be stopped: the
+   * host asks mythcode to cancel it and the turn ends on the edit's own end, see
+   * `turn-done`'s `stopped` and the `stop_unconfirmed` error reason.
+   * Gated-result: signed-out → `'sign_in_required'`; nothing to stop on the
+   * mythcode engine → `'not_stoppable'`. Wire: `agent.stop`.
    */
   'agent.stop': {
     params: { sessionId: string }

@@ -202,6 +202,18 @@ export interface FoundingInterest {
   interestedAt: string | null
 }
 
+/**
+ * The viewer's votes for features not built yet, each with the 1-based menu
+ * slot it was shown in and when it was cast (ISO).
+ */
+export interface FeatureInterest {
+  features: {
+    feature: 'generate_images' | 'attach_files' | 'connect_services'
+    position: '1' | '2' | '3'
+    requestedAt: string
+  }[]
+}
+
 /** The viewer's personal referral code and the link that carries it. */
 export interface Referral {
   code: string
