@@ -205,6 +205,12 @@ export class MythworkClient {
     /** The engine the project's server record names, or null. Wire: `project.getEngine`. */
     getEngine: (params: MethodParams<'project.getEngine'>, opts?: RequestOptions) =>
       this.request('project.getEngine', params, opts),
+    /** Which mythcode versions have a picture. Wire: `project.versions`. */
+    versions: (params: MethodParams<'project.versions'>, opts?: RequestOptions) =>
+      this.request('project.versions', params, opts),
+    /** One mythcode version's picture. Wire: `project.versionImage`. */
+    versionImage: (params: MethodParams<'project.versionImage'>, opts?: RequestOptions) =>
+      this.request('project.versionImage', params, opts),
     /** Read a project's description. Wire: `project.getDescription`. */
     getDescription: (params: MethodParams<'project.getDescription'>, opts?: RequestOptions) =>
       this.request('project.getDescription', params, opts),

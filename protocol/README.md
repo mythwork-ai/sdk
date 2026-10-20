@@ -137,6 +137,8 @@ without authentication. "Auth-gated" means the host requires a signed-in session
 | `project.getName` | `{ pid: string }` | `{ name: string \| null }` | Cached display name; `null` if config not yet on disk |
 | `project.getNames` | `{ pids: string[] }` | `{ names: Record<string, string \| null> }` | Batch version of `project.getName` |
 | `project.getEngine` | `{ pid: string }` | `{ engine: 'mythcode' \| null }` | The engine the project's server record names (`projects.engine`); `null` when none is recorded, signed out, or not the caller's project |
+| `project.versions` | `{ pid: string }` | `{ shas: string[] }` | **First-party, signed-in;** which mythcode versions of the project have a picture |
+| `project.versionImage` | `{ pid: string; sha: string }` | `{ image: BuildScreenshot \| null }` | **First-party, signed-in;** that version's picture, a 1280x800 JPEG |
 | `project.getDescription` | `{ pid: string }` | `{ description: string \| null }` | Cached top-level package.json `description`; `null` when unset or config not yet on disk |
 | `project.setDescription` | `{ pid: string; description: string }` | `Ok` | Sets the top-level package.json `description` (empty string clears it); indexed for search on next publish |
 | `project.setPublicCollab` | `{ pid: string; enabled: boolean; mayWrite?: boolean }` | `{ projectId: string; publicCollab: boolean; mayWrite: boolean }` | Auth-gated, owner-only; local-only/anonymous project rejects. `mayWrite: true` lets public guests edit the collab room; `enabled: false` clears it |

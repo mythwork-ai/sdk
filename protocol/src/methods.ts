@@ -209,6 +209,8 @@ export type AgentEvent =
       ok: boolean
       summary?: string
       filesChanged?: string[]
+      /** Finished, but nothing confirmed the result works: show neither success nor failure. */
+      verified?: false
     }
   | { kind: 'question'; questionId: string; questions: { question: string; options: string[] }[] }
   | { kind: 'changes'; files: string[]; checkpoint?: string }
@@ -716,6 +718,23 @@ export interface MethodMap {
    * signed out, or the account cannot see the project.
    */
   'project.getEngine': { params: { pid: string }; result: { engine: ProjectEngine | null } }
+  /**
+   * Which versions of project `pid` (mythcode history commit ids) have a
+   * picture: one taken right after the commit that made the version. Requires a
+   * first-party, signed-in caller who can read the project.
+   */
+  'project.versions': {
+    params: { pid: string }
+    result: { shas: string[] }
+  }
+  /**
+   * The picture of version `sha` of project `pid`, a 1280x800 JPEG; `null` when
+   * it has none. Same requirements as {@link MethodMap['project.versions']}.
+   */
+  'project.versionImage': {
+    params: { pid: string; sha: string }
+    result: { image: BuildScreenshot | null }
+  }
   /**
    * Read a project's top-level package.json `description` (cached). `null` when
    * the app has no description or the config isn't on disk yet. Mirrors
