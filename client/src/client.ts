@@ -826,6 +826,12 @@ export class MythworkClient {
       opts?: RequestOptions,
     ) => this.request('profile.markFeatureInterest', { feature, position }, opts),
     /**
+     * The viewer's own usage-limit state: each window's percent used, whether
+     * it is over, and its reset time. Signed-in; first-party apps only.
+     * Wire: `profile.getUsage`.
+     */
+    getUsage: (opts?: RequestOptions) => this.request('profile.getUsage', {}, opts),
+    /**
      * Suggest a feature in free text (1 to 500 characters after trimming); at
      * most 10 per rolling 24 hours. Wire: `profile.suggestFeature`.
      */

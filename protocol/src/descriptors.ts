@@ -328,6 +328,10 @@ export const API_METHOD_DESCRIPTORS: Partial<Record<keyof MethodMap, MethodDescr
     http: { verb: 'POST', path: '/profile/me/feature-interest' },
     auth: { signedOut: 'throw', onError: 'throw' },
   },
+  'profile.getUsage': {
+    http: { verb: 'GET', path: '/usage/me' },
+    auth: { signedOut: 'throw', onError: 'throw' },
+  },
   'profile.suggestFeature': {
     http: { verb: 'POST', path: '/profile/me/feature-suggestions' },
     auth: { signedOut: 'throw', onError: 'throw' },

@@ -969,7 +969,7 @@ const handlers: Record<string, Handler> = {
       email: `${maker.handle}@dev.myth.work`,
       displayName: maker.displayName,
       picture: '',
-      profileUrl: `https://myth.work/@${maker.handle}`,
+      profileUrl: `https://mythwork.ai/@${maker.handle}`,
       access: {
         approved: true,
         approvedAt: '2024-01-01T00:00:00.000Z',

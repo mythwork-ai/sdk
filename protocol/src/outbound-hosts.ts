@@ -18,14 +18,14 @@ export type OutboundLevel = 'always' | 'warn' | 'never'
 
 /**
  * Matched as registrable-domain suffixes, so `explore.myth.work` is covered
- * by `myth.work`. Both platform zones are here because warning a visitor
+ * by `myth.work`. The platform zones are here because warning a visitor
  * about a link back to the platform that served the page reads as a bug.
  * Nothing third-party qualifies: the bar is no attacker-creatable content
  * and no open redirector anywhere under the suffix — google.com failed both
  * (docs.google.com/forms is an attacker-creatable receiver,
  * www.google.com/url redirects anywhere) and was removed.
  */
-const ALWAYS: readonly string[] = ['myth.work', 'llama.space']
+const ALWAYS: readonly string[] = ['myth.work', 'mythwork.ai', 'llama.space']
 
 /**
  * Seeded from the StevenBlack hosts list. Only entries that list the bare

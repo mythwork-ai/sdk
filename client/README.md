@@ -175,6 +175,14 @@ await sdk.profile.getFeatureInterest() // { features: { feature, position, reque
 const { id, createdAt } = await sdk.profile.suggestFeature('Export my app as a PDF')
 ```
 
+### Usage limits
+
+```ts
+// First-party apps only. Percent of each ceiling and epoch ms, no dollars.
+const { state, windows } = await sdk.profile.getUsage()
+for (const w of windows) if (w.over) console.log(`${w.window} resets at`, new Date(w.resetsAt))
+```
+
 ### Referral links
 
 ```ts
@@ -346,7 +354,7 @@ strings internally. Legacy strings are never exposed to application code.
 | `sdk.secrets` | `secrets.check`, `secrets.proxyFetch` |
 | `sdk.config` | `config.get` |
 | `sdk.event` | `event.sendBatch` |
-| `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite`, `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs`, `profile.getAnalyticsConsent`, `profile.setAnalyticsConsent`, `profile.getDiscord`, `profile.linkDiscord`, `profile.unlinkDiscord`, `profile.getFoundingInterest`, `profile.markFoundingInterest`, `profile.getFeatureInterest`, `profile.markFeatureInterest`, `profile.suggestFeature`, `profile.getReferral`, `profile.claimReferral` |
+| `sdk.profile` | `profile.get`, `profile.discover`, `profile.claimHandle`, `profile.setContentProject`, `profile.publish`, `profile.setFavorite`, `profile.me`, `profile.myFavorites`, `profile.update`, `profile.getNotificationPrefs`, `profile.setNotificationPrefs`, `profile.getAnalyticsConsent`, `profile.setAnalyticsConsent`, `profile.getDiscord`, `profile.linkDiscord`, `profile.unlinkDiscord`, `profile.getFoundingInterest`, `profile.markFoundingInterest`, `profile.getFeatureInterest`, `profile.markFeatureInterest`, `profile.getUsage`, `profile.suggestFeature`, `profile.getReferral`, `profile.claimReferral` |
 | `sdk.ai` | `ai.chat`, `ai.complete` — `@experimental`. To build an app, open a mythcode session: `sdk.agent.create({ engine: 'mythcode', projectId })` |
 | `sdk.agent` | `agent.create`, `agent.send`, `agent.answer`, `agent.stop`, `agent.state`, `agent.dispose`; event `agent.event` — `@experimental` |
 | `sdk.explore` | `explore.listApps`, `explore.getApp`, `explore.relatedApps`, `explore.trendingApps`, `explore.tags`, `explore.search`, `explore.popularSearches`, `explore.spotlight`, `explore.collections`, `explore.rate`, `explore.clearRating`, `explore.myRatings`, `explore.myApps`, `explore.comments`, `explore.addComment` — `@experimental` |

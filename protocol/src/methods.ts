@@ -392,6 +392,28 @@ export interface UsageLimitDetail {
 }
 
 /**
+ * @experimental One usage window as `profile.getUsage` reports it, tripped or
+ * not. No money: use is a percent of the window's ceiling.
+ */
+export interface UsageWindowState {
+  window: '5h' | '7d' | 'month'
+  /** Whole percent of the ceiling used, floored, 0 to 100. Null when this window has no ceiling. */
+  usedPercent: number | null
+  over: boolean
+  /** When the window frees up, epoch ms. */
+  resetsAt: number
+}
+
+/** @experimental The viewer's own usage-limit state, as `GET /usage/me` returns it. */
+export interface UsageState {
+  state: 'ok' | 'over'
+  /** The plan whose ceilings apply, e.g. `free`. */
+  planId: string
+  /** All three windows, in `5h`, `7d`, `month` order. */
+  windows: UsageWindowState[]
+}
+
+/**
  * @experimental The push-message envelope for agent session events.
  * `seq` is per-session monotonic; consumers detect gaps and recover via
  * `agent.state`. Correlation is by `sessionId`, not `requestId`.
@@ -1239,6 +1261,15 @@ export interface MethodMap {
       position: FeatureInterest['features'][number]['position']
     }
     result: FeatureInterest
+  }
+  /**
+   * The viewer's own usage-limit state: each window's percent used, whether
+   * it is over, and its reset time. Signed-in; first-party apps only.
+   * Backing: usage_events D1.
+   */
+  'profile.getUsage': {
+    params: Record<string, never>
+    result: UsageState
   }
   /**
    * Suggest a feature in free text (trimmed, 1 to 500 characters). At most 10

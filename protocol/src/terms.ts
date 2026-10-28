@@ -3,17 +3,17 @@
  * (the host-frame dialog and the auth worker's /google/callback page) so the
  * wording a user agreed to is one string, not two that drift.
  *
- * Links always point at myth.work — the platform owns the legal documents,
+ * Links always point at mythwork.ai — the platform owns the legal documents,
  * so staging and preview zones link there too. The copy is AGE-254's,
  * verbatim.
  */
 
-export const TERMS_URL = 'https://myth.work/terms'
-export const PRIVACY_URL = 'https://myth.work/privacy'
+export const TERMS_URL = 'https://mythwork.ai/terms'
+export const PRIVACY_URL = 'https://mythwork.ai/privacy'
 
 /**
  * The current Terms version. It matches the "Last updated" date on
- * myth.work/terms; bump it with the Terms so new accounts record the version
+ * mythwork.ai/terms; bump it with the Terms so new accounts record the version
  * they actually saw. Only a sign-up records it, so bumping it asks no
  * existing account again.
  *
